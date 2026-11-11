@@ -102,9 +102,27 @@ provide credentials of a Google account dedicated to testing; it is skipped othe
 GDRIVESYNC_LIVE_CLIENT_ID=... GDRIVESYNC_LIVE_CLIENT_SECRET=... GDRIVESYNC_LIVE_REFRESH_TOKEN=... build/bin/tst_live_drive
 ```
 
+## Packages and releases
+
+- **Every merge to `main`**: CI builds `gdrive-sync_<version>+git<date>.<sha>_amd64.deb` for Ubuntu 24.04
+  (amd64, Qt 5.15, KF 5.115) and attaches it to the CI run as the artifact `gdrive-sync-deb`.
+- **Try the latest build without installing it** (needs the GitHub CLI, signed in with `gh auth login`):
+
+  ```bash
+  scripts/run-latest-build.sh
+  ```
+
+  The package is downloaded and unpacked into `~/.cache/gdrive-sync-test` and started from there. It uses
+  your normal configuration and wallet. Do not enable the automatic sync from such a copy: the timer would
+  point into the cache directory.
+- **Release**: on GitHub open *Actions → Release → Run workflow* on `main` and choose `patch`, `minor` or
+  `major`. The workflow increases the latest `vX.Y.Z` tag accordingly (the first release is `0.1.0`), runs
+  the tests, tags the commit and publishes a GitHub release with the `.deb`.
+
 ## Layout
 
 - `src/core`: application logic without widgets (OAuth, Drive client, planner, sync engine, folders, timer)
 - `src/kde`: KWallet, Places and notification back ends
 - `src/gui`: main window and dialogs
 - `tests`: test suites and the mock Google server
+- `scripts`: version bump helper and the script that runs the latest CI build

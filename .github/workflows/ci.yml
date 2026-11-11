@@ -87,3 +87,39 @@ jobs:
         run: cmake --build build
       - name: clang-tidy
         run: run-clang-tidy -quiet -p build "$PWD/src/.*\.cpp$"
+
+  package:
+    name: Debian package (amd64, Ubuntu 24.04)
+    # Only for merges to main; the binary matches Ubuntu 24.04 / Qt 5.15 / KF 5.115.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-test, sanitizers, static-analysis]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $DEPS dpkg-dev
+      - name: Determine version
+        id: version
+        run: |
+          base="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          base="${base#v}"
+          echo "base=${base:-0.1.0}" >> "$GITHUB_OUTPUT"
+          echo "suffix=+git$(date -u +%Y%m%d).${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build package
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DGDS_VERSION="${{ steps.version.outputs.base }}" \
+            -DGDS_VERSION_SUFFIX="${{ steps.version.outputs.suffix }}"
+          cmake --build build
+          (cd build && cpack -G DEB)
+          dpkg-deb --info build/*.deb
+          dpkg-deb --contents build/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gdrive-sync-deb
+          path: build/*.deb
+          if-no-files-found: error
