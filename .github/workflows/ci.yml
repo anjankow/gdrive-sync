@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEPS: >-
+    build-essential cmake ninja-build extra-cmake-modules gettext
+    qtbase5-dev
+    libkf5wallet-dev libkf5config-dev libkf5coreaddons-dev libkf5i18n-dev
+    libkf5notifications-dev libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev
+    xvfb dbus-daemon dbus-x11
+
+jobs:
+  build-and-test:
+    name: Build and test (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $DEPS clang
+      - name: Configure
+        run: |
+          if [ "${{ matrix.compiler }}" = clang ]; then export CC=clang CXX=clang++; fi
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON -DGDS_WERROR=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: xvfb-run -a dbus-run-session -- ctest --test-dir build --output-on-failure --timeout 300
+      - name: Install (staging)
+        run: DESTDIR="$PWD/stage" cmake --install build
+      - name: Validate desktop file
+        run: |
+          sudo apt-get install -y --no-install-recommends desktop-file-utils
+          desktop-file-validate data/io.github.anjankow.gdrivesync.desktop
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $DEPS
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DGDS_WERROR=ON -DGDS_SANITIZE=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: xvfb-run -a dbus-run-session -- ctest --test-dir build --output-on-failure --timeout 600
+
+  static-analysis:
+    name: clang-format and clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $DEPS clang clang-format clang-tidy
+      - name: Check formatting
+        run: |
+          clang-format --version
+          find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
+      - name: Configure
+        run: CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+      - name: Generate moc files
+        run: cmake --build build
+      - name: clang-tidy
+        run: run-clang-tidy -quiet -p build "$PWD/src/.*\.cpp$"
+
+  package:
+    name: Debian package (amd64, Ubuntu 24.04)
+    # Only for merges to main; the binary matches Ubuntu 24.04 / Qt 5.15 / KF 5.115.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-test, sanitizers, static-analysis]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $DEPS dpkg-dev
+      - name: Determine version
+        id: version
+        run: |
+          base="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          base="${base#v}"
+          echo "base=${base:-0.1.0}" >> "$GITHUB_OUTPUT"
+          echo "suffix=+git$(date -u +%Y%m%d).${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build package
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DGDS_VERSION="${{ steps.version.outputs.base }}" \
+            -DGDS_VERSION_SUFFIX="${{ steps.version.outputs.suffix }}"
+          cmake --build build
+          (cd build && cpack -G DEB)
+          dpkg-deb --info build/*.deb
+          dpkg-deb --contents build/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gdrive-sync-deb
+          path: build/*.deb
+          if-no-files-found: error

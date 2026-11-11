@@ -1,0 +1,15 @@
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-unchecked-optional-access,
+  -bugprone-branch-clone,
+  performance-*,
+  -performance-enum-size,
+  clang-analyzer-core.*,
+  clang-analyzer-cplusplus.*,
+  -clang-analyzer-cplusplus.NewDelete,
+  -clang-analyzer-cplusplus.NewDeleteLeaks
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'src/.*'

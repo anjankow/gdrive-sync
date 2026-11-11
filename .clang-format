@@ -1,0 +1,7 @@
+BasedOnStyle: WebKit
+ColumnLimit: 110
+IndentWidth: 4
+AllowShortFunctionsOnASingleLine: Inline
+SortIncludes: true
+PointerAlignment: Left
+Cpp11BracedListStyle: true
