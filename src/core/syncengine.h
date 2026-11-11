@@ -54,7 +54,8 @@ Q_SIGNALS:
     void conflictsFound(const QString& folderId, const QVector<gds::ConflictInfo>& conflicts);
     /// Emitted (interactive runs) before anything is deleted.
     /// Answer with provideDeletionDecision().
-    void deletionsPending(const QString& folderId, const QStringList& localPaths, const QStringList& remotePaths);
+    void deletionsPending(
+        const QString& folderId, const QStringList& localPaths, const QStringList& remotePaths);
     void finished(const gds::SyncResult& result);
 
 private:
@@ -68,7 +69,7 @@ private:
 
     GoogleEndpoints m_endpoints;
     std::shared_ptr<TokenSource> m_tokens;
-    std::atomic_bool m_cancel { false };
+    std::atomic_bool m_cancel {false};
     int m_retryBaseMs = 500;
 
     QMutex m_mutex;

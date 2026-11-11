@@ -9,7 +9,8 @@
 
 namespace gds {
 
-TokenSource::TokenSource(GoogleEndpoints endpoints, QString clientId, QString clientSecret, QString refreshToken)
+TokenSource::TokenSource(
+    GoogleEndpoints endpoints, QString clientId, QString clientSecret, QString refreshToken)
     : m_endpoints(std::move(endpoints))
     , m_clientId(std::move(clientId))
     , m_clientSecret(std::move(clientSecret))
@@ -42,12 +43,12 @@ QString TokenSource::accessToken(QString* error, bool forceRefresh)
     }
 
     QList<QPair<QString, QString>> fields {
-        { QStringLiteral("client_id"), m_clientId },
-        { QStringLiteral("grant_type"), QStringLiteral("refresh_token") },
-        { QStringLiteral("refresh_token"), m_refreshToken },
+        {QStringLiteral("client_id"), m_clientId},
+        {QStringLiteral("grant_type"), QStringLiteral("refresh_token")},
+        {QStringLiteral("refresh_token"), m_refreshToken},
     };
     if (!m_clientSecret.isEmpty())
-        fields.append({ QStringLiteral("client_secret"), m_clientSecret });
+        fields.append({QStringLiteral("client_secret"), m_clientSecret});
 
     HttpRequest req;
     req.method = "POST";

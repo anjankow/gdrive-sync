@@ -12,6 +12,7 @@
 
 #include <KSharedConfig>
 
+#include <QLockFile>
 #include <QObject>
 #include <QPointer>
 #include <QThread>
@@ -92,12 +93,14 @@ Q_SIGNALS:
     void loggedOut();
     void accountChanged();
     void authorizationLost();
-    void driveFoldersListed(const QString& parentId, const QVector<gds::DriveItem>& folders, const QString& error);
+    void driveFoldersListed(
+        const QString& parentId, const QVector<gds::DriveItem>& folders, const QString& error);
     void syncStarted();
     void folderSyncStarted(const QString& folderId);
     void progress(const gds::SyncProgress& progress);
     void conflictsFound(const QString& folderId, const QVector<gds::ConflictInfo>& conflicts);
-    void deletionsPending(const QString& folderId, const QStringList& localPaths, const QStringList& remotePaths);
+    void deletionsPending(
+        const QString& folderId, const QStringList& localPaths, const QStringList& remotePaths);
     void folderSyncFinished(const gds::SyncResult& result);
     void syncFinished(const QVector<gds::SyncResult>& results);
     void autoSyncChanged(bool ok, const QString& error);
@@ -109,6 +112,7 @@ private:
     void destroyEngine();
     bool startJobs(const QVector<FolderConfig>& folders, bool interactive);
     void startNextJob();
+    void finishBatch();
     void onEngineFinished(const SyncResult& result);
 
     GoogleEndpoints m_endpoints;
@@ -131,6 +135,8 @@ private:
     bool m_syncing = false;
     bool m_batchInteractive = true;
     QString m_currentFolder;
+    /// Prevents the GUI and an automatic run from syncing at the same time.
+    std::unique_ptr<QLockFile> m_lock;
     int m_retryBaseMs = 500;
 };
 

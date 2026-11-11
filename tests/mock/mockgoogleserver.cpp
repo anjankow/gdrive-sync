@@ -104,8 +104,8 @@ QString MockGoogleServer::addFolder(const QString& name, const QString& parentId
     return f.id;
 }
 
-QString MockGoogleServer::addFile(const QString& name, const QString& parentId, const QByteArray& content,
-    const QString& mimeType)
+QString MockGoogleServer::addFile(
+    const QString& name, const QString& parentId, const QByteArray& content, const QString& mimeType)
 {
     QMutexLocker lock(&m_mutex);
     File f;
@@ -249,13 +249,19 @@ void MockGoogleServer::setMaxPageSize(int n)
 void MockGoogleServer::failNext(const QString& pathPart, int status, int count, const QByteArray& method)
 {
     QMutexLocker lock(&m_mutex);
-    m_faults.append({ pathPart, status, count, method });
+    m_faults.append({pathPart, status, count, method});
 }
 
 void MockGoogleServer::setDownloadChunkDelayMs(int ms)
 {
     QMutexLocker lock(&m_mutex);
     m_chunkDelayMs = ms;
+}
+
+void MockGoogleServer::setResponseDelayMs(int ms)
+{
+    QMutexLocker lock(&m_mutex);
+    m_responseDelayMs = ms;
 }
 
 void MockGoogleServer::interruptNextUploadAfter(qint64 bytes)
@@ -273,7 +279,8 @@ QStringList MockGoogleServer::requestLog() const
 int MockGoogleServer::requestCount(const QString& contains) const
 {
     QMutexLocker lock(&m_mutex);
-    return int(std::count_if(m_log.cbegin(), m_log.cend(), [&](const QString& l) { return l.contains(contains); }));
+    return int(
+        std::count_if(m_log.cbegin(), m_log.cend(), [&](const QString& l) { return l.contains(contains); }));
 }
 
 void MockGoogleServer::clearRequestLog()
@@ -326,7 +333,15 @@ void MockGoogleServer::onReadyRead(QTcpSocket* socket)
     m_buffers.remove(socket);
     socket->disconnect(m_server); // one request per connection
     connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-    handle(socket, req);
+    int delay = 0;
+    {
+        QMutexLocker lock(&m_mutex);
+        delay = m_responseDelayMs;
+    }
+    if (delay > 0)
+        QTimer::singleShot(delay, socket, [this, socket, req]() { handle(socket, req); });
+    else
+        handle(socket, req);
 }
 
 void MockGoogleServer::reply(QTcpSocket* socket, int status, const QByteArray& body,
@@ -344,13 +359,13 @@ void MockGoogleServer::reply(QTcpSocket* socket, int status, const QByteArray& b
     socket->disconnectFromHost();
 }
 
-void MockGoogleServer::replyError(QTcpSocket* socket, int status, const QString& reason, const QString& message)
+void MockGoogleServer::replyError(
+    QTcpSocket* socket, int status, const QString& reason, const QString& message)
 {
-    QJsonObject item { { QStringLiteral("reason"), reason }, { QStringLiteral("message"), message } };
-    QJsonObject error { { QStringLiteral("code"), status },
-        { QStringLiteral("message"), message },
-        { QStringLiteral("errors"), QJsonArray { item } } };
-    reply(socket, status, QJsonDocument(QJsonObject { { QStringLiteral("error"), error } }).toJson());
+    QJsonObject item {{QStringLiteral("reason"), reason}, {QStringLiteral("message"), message}};
+    QJsonObject error {{QStringLiteral("code"), status}, {QStringLiteral("message"), message},
+        {QStringLiteral("errors"), QJsonArray {item}}};
+    reply(socket, status, QJsonDocument(QJsonObject {{QStringLiteral("error"), error}}).toJson());
 }
 
 void MockGoogleServer::replyThrottled(QTcpSocket* socket, const QByteArray& body)
@@ -416,7 +431,8 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
             if (--fault.count <= 0)
                 m_faults.removeAt(i);
             lock.unlock();
-            replyError(socket, status, status == 403 ? QStringLiteral("rateLimitExceeded") : QStringLiteral("backendError"),
+            replyError(socket, status,
+                status == 403 ? QStringLiteral("rateLimitExceeded") : QStringLiteral("backendError"),
                 QStringLiteral("Injected failure"));
             return;
         }
@@ -459,10 +475,10 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
 
     // ---- Drive v3 ----
     if (req.path == QLatin1String("/drive/v3/about")) {
-        const QJsonObject user { { QStringLiteral("emailAddress"), m_email },
-            { QStringLiteral("displayName"), QStringLiteral("Test User") } };
+        const QJsonObject user {{QStringLiteral("emailAddress"), m_email},
+            {QStringLiteral("displayName"), QStringLiteral("Test User")}};
         lock.unlock();
-        reply(socket, 200, QJsonDocument(QJsonObject { { QStringLiteral("user"), user } }).toJson());
+        reply(socket, 200, QJsonDocument(QJsonObject {{QStringLiteral("user"), user}}).toJson());
         return;
     }
     if (req.path == QLatin1String("/drive/v3/files") && req.method == "GET") {
@@ -474,7 +490,8 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
         File f;
         f.id = newId();
         f.name = meta.value(QStringLiteral("name")).toString();
-        f.mimeType = meta.value(QStringLiteral("mimeType")).toString(QStringLiteral("application/octet-stream"));
+        f.mimeType
+            = meta.value(QStringLiteral("mimeType")).toString(QStringLiteral("application/octet-stream"));
         f.parent = meta.value(QStringLiteral("parents")).toArray().first().toString(QStringLiteral("root"));
         f.modifiedMs = QDateTime::currentMSecsSinceEpoch();
         m_files.insert(f.id, f);
@@ -487,7 +504,8 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
         const QString id = req.path.mid(16);
         if (!m_files.contains(id)) {
             lock.unlock();
-            replyError(socket, 404, QStringLiteral("notFound"), QStringLiteral("File not found: %1.").arg(id));
+            replyError(
+                socket, 404, QStringLiteral("notFound"), QStringLiteral("File not found: %1.").arg(id));
             return;
         }
         File& f = m_files[id];
@@ -528,16 +546,19 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
             }
         } else {
             s.name = meta.value(QStringLiteral("name")).toString();
-            s.parent = meta.value(QStringLiteral("parents")).toArray().first().toString(QStringLiteral("root"));
+            s.parent
+                = meta.value(QStringLiteral("parents")).toArray().first().toString(QStringLiteral("root"));
         }
-        const QDateTime modified = QDateTime::fromString(meta.value(QStringLiteral("modifiedTime")).toString(), Qt::ISODateWithMs);
-        s.modifiedMs = modified.isValid() ? modified.toMSecsSinceEpoch() : QDateTime::currentMSecsSinceEpoch();
+        const QDateTime modified
+            = QDateTime::fromString(meta.value(QStringLiteral("modifiedTime")).toString(), Qt::ISODateWithMs);
+        s.modifiedMs
+            = modified.isValid() ? modified.toMSecsSinceEpoch() : QDateTime::currentMSecsSinceEpoch();
         s.total = req.headers.value("x-upload-content-length", "-1").toLongLong();
         const QString sid = newId();
         m_sessions.insert(sid, s);
         const QByteArray location = (baseUrl() + QStringLiteral("/upload/session/") + sid).toUtf8();
         lock.unlock();
-        reply(socket, 200, {}, { { "Location", location } });
+        reply(socket, 200, {}, {{"Location", location}});
         return;
     }
 
@@ -560,16 +581,17 @@ void MockGoogleServer::handleAuthorize(QTcpSocket* socket, const Request& req)
         out.addQueryItem(QStringLiteral("error"), QStringLiteral("access_denied"));
     } else {
         const QString code = QStringLiteral("code-") + newId();
-        m_codes.insert(code, { m_lastAuthQuery.value(QStringLiteral("code_challenge")),
-                                 m_lastAuthQuery.value(QStringLiteral("redirect_uri")),
-                                 m_lastAuthQuery.value(QStringLiteral("client_id")) });
+        m_codes.insert(code,
+            {m_lastAuthQuery.value(QStringLiteral("code_challenge")),
+                m_lastAuthQuery.value(QStringLiteral("redirect_uri")),
+                m_lastAuthQuery.value(QStringLiteral("client_id"))});
         out.addQueryItem(QStringLiteral("code"), code);
     }
     redirect.setPath(QStringLiteral("/"));
     redirect.setQuery(out);
     const QByteArray location = redirect.toEncoded();
     m_mutex.unlock();
-    reply(socket, 302, {}, { { "Location", location } });
+    reply(socket, 302, {}, {{"Location", location}});
     m_mutex.lock();
 }
 
@@ -582,14 +604,16 @@ void MockGoogleServer::handleToken(QTcpSocket* socket, const Request& req)
     int status = 200;
     const auto error = [&](const QString& code, const QString& description) {
         status = 400;
-        out = QJsonObject { { QStringLiteral("error"), code }, { QStringLiteral("error_description"), description } };
+        out = QJsonObject {
+            {QStringLiteral("error"), code}, {QStringLiteral("error_description"), description}};
     };
     const QString grant = form.value(QStringLiteral("grant_type"));
     if (grant == QLatin1String("authorization_code")) {
         const QString code = form.value(QStringLiteral("code"));
         const AuthCode info = m_codes.take(code);
         const QString expected = QString::fromLatin1(
-            QCryptographicHash::hash(form.value(QStringLiteral("code_verifier")).toLatin1(), QCryptographicHash::Sha256)
+            QCryptographicHash::hash(
+                form.value(QStringLiteral("code_verifier")).toLatin1(), QCryptographicHash::Sha256)
                 .toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
         if (info.challenge.isEmpty() || info.challenge != expected) {
             error(QStringLiteral("invalid_grant"), QStringLiteral("Invalid code verifier."));
@@ -603,11 +627,10 @@ void MockGoogleServer::handleToken(QTcpSocket* socket, const Request& req)
             m_accessTokens.insert(access);
             m_refreshTokens.insert(refresh);
             m_issuedRefresh.append(refresh);
-            out = QJsonObject { { QStringLiteral("access_token"), access },
-                { QStringLiteral("refresh_token"), refresh },
-                { QStringLiteral("expires_in"), 3920 },
-                { QStringLiteral("token_type"), QStringLiteral("Bearer") },
-                { QStringLiteral("scope"), QStringLiteral("https://www.googleapis.com/auth/drive") } };
+            out = QJsonObject {{QStringLiteral("access_token"), access},
+                {QStringLiteral("refresh_token"), refresh}, {QStringLiteral("expires_in"), 3920},
+                {QStringLiteral("token_type"), QStringLiteral("Bearer")},
+                {QStringLiteral("scope"), QStringLiteral("https://www.googleapis.com/auth/drive")}};
         }
     } else if (grant == QLatin1String("refresh_token")) {
         if (!m_refreshTokens.contains(form.value(QStringLiteral("refresh_token")))) {
@@ -615,9 +638,8 @@ void MockGoogleServer::handleToken(QTcpSocket* socket, const Request& req)
         } else {
             const QString access = QStringLiteral("at-") + newId();
             m_accessTokens.insert(access);
-            out = QJsonObject { { QStringLiteral("access_token"), access },
-                { QStringLiteral("expires_in"), 3920 },
-                { QStringLiteral("token_type"), QStringLiteral("Bearer") } };
+            out = QJsonObject {{QStringLiteral("access_token"), access}, {QStringLiteral("expires_in"), 3920},
+                {QStringLiteral("token_type"), QStringLiteral("Bearer")}};
         }
     } else {
         error(QStringLiteral("unsupported_grant_type"), QStringLiteral("Bad grant type"));
@@ -633,7 +655,8 @@ void MockGoogleServer::handleList(QTcpSocket* socket, const Request& req)
     const QUrlQuery query(req.url);
     const QString q = query.queryItemValue(QStringLiteral("q"), QUrl::FullyDecoded);
     QString parent;
-    const auto parentMatch = QRegularExpression(QStringLiteral("'((?:[^'\\\\]|\\\\.)*)' in parents")).match(q);
+    const auto parentMatch
+        = QRegularExpression(QStringLiteral("'((?:[^'\\\\]|\\\\.)*)' in parents")).match(q);
     if (parentMatch.hasMatch())
         parent = parentMatch.captured(1);
     const bool notTrashed = q.contains(QRegularExpression(QStringLiteral("trashed\\s*=\\s*false")));
@@ -652,9 +675,11 @@ void MockGoogleServer::handleList(QTcpSocket* socket, const Request& req)
             continue;
         matches.append(f);
     }
-    std::stable_sort(matches.begin(), matches.end(), [](const File& a, const File& b) { return a.name < b.name; });
+    std::stable_sort(
+        matches.begin(), matches.end(), [](const File& a, const File& b) { return a.name < b.name; });
 
-    const int pageSize = qMin(m_maxPageSize, qMax(1, query.queryItemValue(QStringLiteral("pageSize")).toInt()));
+    const int pageSize
+        = qMin(m_maxPageSize, qMax(1, query.queryItemValue(QStringLiteral("pageSize")).toInt()));
     const int offset = query.queryItemValue(QStringLiteral("pageToken")).toInt();
     QByteArray files;
     for (int i = offset; i < matches.size() && i < offset + pageSize; ++i) {
@@ -685,7 +710,7 @@ void MockGoogleServer::handleUploadPut(QTcpSocket* socket, const Request& req, c
     const auto incomplete = [&]() {
         QList<QPair<QByteArray, QByteArray>> headers;
         if (!s.data.isEmpty())
-            headers.append({ "Range", "bytes=0-" + QByteArray::number(s.data.size() - 1) });
+            headers.append({"Range", "bytes=0-" + QByteArray::number(s.data.size() - 1)});
         m_mutex.unlock();
         reply(socket, 308, {}, headers);
         m_mutex.lock();

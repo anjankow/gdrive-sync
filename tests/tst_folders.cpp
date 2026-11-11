@@ -26,11 +26,14 @@ private Q_SLOTS:
         QCOMPARE(fm->validateDestination(base + QStringLiteral("/does/not/exist/yet")), QString());
 
         QVERIFY(writeFile(base + QStringLiteral("/full/file.txt"), "x"));
-        QVERIFY(fm->validateDestination(base + QStringLiteral("/full")).contains(QStringLiteral("must be empty")));
+        QVERIFY(fm->validateDestination(base + QStringLiteral("/full"))
+                    .contains(QStringLiteral("must be empty")));
         QVERIFY(writeFile(base + QStringLiteral("/hidden/.dotfile"), "x"));
-        QVERIFY(fm->validateDestination(base + QStringLiteral("/hidden")).contains(QStringLiteral("must be empty")));
+        QVERIFY(fm->validateDestination(base + QStringLiteral("/hidden"))
+                    .contains(QStringLiteral("must be empty")));
         QVERIFY(QDir().mkpath(base + QStringLiteral("/withdir/sub")));
-        QVERIFY(fm->validateDestination(base + QStringLiteral("/withdir")).contains(QStringLiteral("must be empty")));
+        QVERIFY(fm->validateDestination(base + QStringLiteral("/withdir"))
+                    .contains(QStringLiteral("must be empty")));
         QVERIFY(!fm->validateDestination(base + QStringLiteral("/full/file.txt")).isEmpty()); // not a folder
     }
 
@@ -41,11 +44,14 @@ private Q_SLOTS:
         const QString docs = f.server.addFolder(QStringLiteral("Docs"));
         QVERIFY(writeFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/already-here.txt"), "x"));
         QString error;
-        QVERIFY(f.core->folders()->addFolder(docs, QStringLiteral("Docs"), f.localDir(QStringLiteral("Docs")), &error).isEmpty());
+        QVERIFY(f.core->folders()
+                    ->addFolder(docs, QStringLiteral("Docs"), f.localDir(QStringLiteral("Docs")), &error)
+                    .isEmpty());
         QVERIFY(error.contains(QStringLiteral("must be empty")));
         QVERIFY(f.core->folders()->folders().isEmpty());
         QVERIFY(f.places.places.isEmpty());
-        QCOMPARE(readFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/already-here.txt")), QByteArray("x"));
+        QCOMPARE(readFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/already-here.txt")),
+            QByteArray("x"));
     }
 
     void mountCreatesTheDestinationAndAPlacesEntry()
@@ -74,9 +80,12 @@ private Q_SLOTS:
         FolderManager* fm = f.core->folders();
         QString error;
         QVERIFY(fm->addFolder(b, QStringLiteral("B"), f.localDir(QStringLiteral("A")), &error).isEmpty());
-        QVERIFY(fm->addFolder(b, QStringLiteral("B"), f.localDir(QStringLiteral("A")) + QStringLiteral("/inside"), &error).isEmpty());
+        QVERIFY(fm->addFolder(b, QStringLiteral("B"),
+                      f.localDir(QStringLiteral("A")) + QStringLiteral("/inside"), &error)
+                    .isEmpty());
         QVERIFY(error.contains(QStringLiteral("overlaps")));
-        QVERIFY(fm->addFolder(b, QStringLiteral("B"), f.tmp.path() + QStringLiteral("/local"), &error).isEmpty());
+        QVERIFY(
+            fm->addFolder(b, QStringLiteral("B"), f.tmp.path() + QStringLiteral("/local"), &error).isEmpty());
         QVERIFY(fm->addFolder(a, QStringLiteral("A"), f.localDir(QStringLiteral("A2")), &error).isEmpty());
         QVERIFY(error.contains(QStringLiteral("already mounted")));
         QCOMPARE(fm->folders().size(), 1);

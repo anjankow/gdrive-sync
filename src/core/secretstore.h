@@ -33,8 +33,7 @@ public:
     void open() override
     {
         m_open = !failOpen;
-        QMetaObject::invokeMethod(
-            this, [this]() { Q_EMIT opened(m_open); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this]() { Q_EMIT opened(m_open); }, Qt::QueuedConnection);
     }
     bool isOpen() const override { return m_open; }
     QString read(const QString& key) const override { return m_data.value(key); }
@@ -60,9 +59,18 @@ private:
 };
 
 namespace SecretKeys {
-    inline QString clientId() { return QStringLiteral("oauth_client_id"); }
-    inline QString clientSecret() { return QStringLiteral("oauth_client_secret"); }
-    inline QString refreshToken() { return QStringLiteral("oauth_refresh_token"); }
+    inline QString clientId()
+    {
+        return QStringLiteral("oauth_client_id");
+    }
+    inline QString clientSecret()
+    {
+        return QStringLiteral("oauth_client_secret");
+    }
+    inline QString refreshToken()
+    {
+        return QStringLiteral("oauth_refresh_token");
+    }
 }
 
 } // namespace gds

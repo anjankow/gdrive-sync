@@ -46,7 +46,7 @@ private Q_SLOTS:
         f.server.setTrashed(s.goneId);
         const SyncResult r = f.sync(s.folderId);
         QCOMPARE(f.deletionQuestions, 1);
-        QCOMPARE(f.askedLocalDeletions, QStringList { QStringLiteral("gone.txt") });
+        QCOMPARE(f.askedLocalDeletions, QStringList {QStringLiteral("gone.txt")});
         QVERIFY(f.askedRemoteDeletions.isEmpty());
         QCOMPARE(r.status, SyncResult::Success);
         QCOMPARE(r.deletedLocal, 1);
@@ -64,7 +64,8 @@ private Q_SLOTS:
         QCOMPARE(f.deletionQuestions, 1);
         QVERIFY(f.askedLocalDeletions.isEmpty());
         QCOMPARE(f.askedRemoteDeletions,
-            (QStringList { QStringLiteral("sub/in-sub.txt"), QStringLiteral("gone.txt"), QStringLiteral("sub/") }));
+            (QStringList {
+                QStringLiteral("sub/in-sub.txt"), QStringLiteral("gone.txt"), QStringLiteral("sub/")}));
         QCOMPARE(r.status, SyncResult::Success);
         QVERIFY(!f.server.existsPath(QStringLiteral("Docs/gone.txt")));
         QVERIFY(!f.server.existsPath(QStringLiteral("Docs/sub")));
@@ -126,7 +127,7 @@ private Q_SLOTS:
             const Setup s = prepare(f, SyncDirection::DriveToLocal);
             f.server.setTrashed(s.goneId);
             f.sync(s.folderId);
-            QCOMPARE(f.askedLocalDeletions, QStringList { QStringLiteral("gone.txt") });
+            QCOMPARE(f.askedLocalDeletions, QStringList {QStringLiteral("gone.txt")});
         }
         {
             Fixture f;
@@ -135,7 +136,7 @@ private Q_SLOTS:
             QCOMPARE(f.sync(s.folderId).uploaded, 1);
             QVERIFY(QFile::remove(s.dir + QStringLiteral("/mine.txt")));
             const SyncResult r = f.sync(s.folderId);
-            QCOMPARE(f.askedRemoteDeletions, QStringList { QStringLiteral("mine.txt") });
+            QCOMPARE(f.askedRemoteDeletions, QStringList {QStringLiteral("mine.txt")});
             QCOMPARE(r.deletedRemote, 1);
             QVERIFY(!f.server.existsPath(QStringLiteral("Docs/mine.txt")));
         }
@@ -154,7 +155,7 @@ private Q_SLOTS:
         QCOMPARE(f.askedConflicts.size(), 1);
         QCOMPARE(f.askedConflicts.first().kind, ConflictKind::LocalModifiedRemoteDeleted);
         QCOMPARE(f.deletionQuestions, 1);
-        QCOMPARE(f.askedLocalDeletions, QStringList { QStringLiteral("gone.txt") });
+        QCOMPARE(f.askedLocalDeletions, QStringList {QStringLiteral("gone.txt")});
         QCOMPARE(r.status, SyncResult::Success);
         QVERIFY(!QFile::exists(s.dir + QStringLiteral("/gone.txt")));
     }
@@ -178,14 +179,14 @@ private Q_SLOTS:
         // ... everything else was synced ...
         QCOMPARE(readFile(s.dir + QStringLiteral("/new.txt")), QByteArray("new"));
         // ... and the user is notified
-        QCOMPARE(f.notifier.events, QStringList { QStringLiteral("syncAttention") });
+        QCOMPARE(f.notifier.events, QStringList {QStringLiteral("syncAttention")});
         QVERIFY(f.notifier.texts.first().contains(QStringLiteral("2 deletion")));
 
         // the pending deletions are presented by the next manual sync
         const SyncResult manual = f.sync(s.folderId);
         QCOMPARE(f.deletionQuestions, 1);
-        QCOMPARE(f.askedLocalDeletions, QStringList { QStringLiteral("gone.txt") });
-        QCOMPARE(f.askedRemoteDeletions, QStringList { QStringLiteral("keep.txt") });
+        QCOMPARE(f.askedLocalDeletions, QStringList {QStringLiteral("gone.txt")});
+        QCOMPARE(f.askedRemoteDeletions, QStringList {QStringLiteral("keep.txt")});
         QCOMPARE(manual.status, SyncResult::Success);
     }
 
@@ -198,7 +199,7 @@ private Q_SLOTS:
         QVERIFY(QDir(s.dir + QStringLiteral("/sub")).removeRecursively());
         const SyncResult r = f.sync(s.folderId);
         QCOMPARE(r.status, SyncResult::Success);
-        QCOMPARE(f.askedRemoteDeletions, QStringList { QStringLiteral("sub/in-sub.txt") });
+        QCOMPARE(f.askedRemoteDeletions, QStringList {QStringLiteral("sub/in-sub.txt")});
         QVERIFY(f.server.existsPath(QStringLiteral("Docs/sub/Notes")));
         QVERIFY(!f.server.existsPath(QStringLiteral("Docs/sub/in-sub.txt")));
     }

@@ -18,7 +18,8 @@ Scheduler::Scheduler(QString unitDir, QString executable, SystemctlRunner runner
 
 QString Scheduler::defaultUnitDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/systemd/user");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+        + QStringLiteral("/systemd/user");
 }
 
 QString Scheduler::serviceUnit(const QString& executable)
@@ -71,7 +72,8 @@ int Scheduler::intervalMinutes() const
     QFile f(timerPath());
     if (!f.open(QIODevice::ReadOnly))
         return 0;
-    const QRegularExpression re(QStringLiteral("^OnUnitActiveSec=(\\d+)min$"), QRegularExpression::MultilineOption);
+    const QRegularExpression re(
+        QStringLiteral("^OnUnitActiveSec=(\\d+)min$"), QRegularExpression::MultilineOption);
     const auto match = re.match(QString::fromUtf8(f.readAll()));
     return match.hasMatch() ? match.captured(1).toInt() : 0;
 }
@@ -98,15 +100,15 @@ bool Scheduler::enable(int intervalMinutes, QString* error)
         || !writeFile(timerPath(), timerUnit(intervalMinutes), error))
         return false;
     const QString timer = unitName() + QStringLiteral(".timer");
-    if (m_runner({ QStringLiteral("daemon-reload") }, error)
-        && m_runner({ QStringLiteral("enable"), QStringLiteral("--now"), timer }, error)
+    if (m_runner({QStringLiteral("daemon-reload")}, error)
+        && m_runner({QStringLiteral("enable"), QStringLiteral("--now"), timer}, error)
         // apply a changed interval to an already running timer
-        && m_runner({ QStringLiteral("restart"), timer }, error))
+        && m_runner({QStringLiteral("restart"), timer}, error))
         return true;
     // do not leave a half-installed timer behind
     QFile::remove(timerPath());
     QFile::remove(servicePath());
-    m_runner({ QStringLiteral("daemon-reload") }, nullptr);
+    m_runner({QStringLiteral("daemon-reload")}, nullptr);
     return false;
 }
 
@@ -115,17 +117,17 @@ bool Scheduler::disable(QString* error)
     const QString timer = unitName() + QStringLiteral(".timer");
     bool ok = true;
     if (QFile::exists(timerPath()))
-        ok = m_runner({ QStringLiteral("disable"), QStringLiteral("--now"), timer }, error);
+        ok = m_runner({QStringLiteral("disable"), QStringLiteral("--now"), timer}, error);
     QFile::remove(timerPath());
     QFile::remove(servicePath());
-    m_runner({ QStringLiteral("daemon-reload") }, nullptr);
+    m_runner({QStringLiteral("daemon-reload")}, nullptr);
     return ok;
 }
 
 bool Scheduler::runSystemctl(const QStringList& args, QString* error)
 {
     QProcess p;
-    p.start(QStringLiteral("systemctl"), QStringList { QStringLiteral("--user") } + args);
+    p.start(QStringLiteral("systemctl"), QStringList {QStringLiteral("--user")} + args);
     if (!p.waitForFinished(15000) || p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
         if (error) {
             const QString out = QString::fromUtf8(p.readAllStandardError()).trimmed();

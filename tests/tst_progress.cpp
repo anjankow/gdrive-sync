@@ -28,7 +28,8 @@ private Q_SLOTS:
         p.filesTotal = 5;
         p.filesDone = 2;
         QCOMPARE(p.bytesRemaining(), 7 * 1024 * 1024);
-        QCOMPARE(formatProgress(p), QStringLiteral("3.0 MiB of 10.0 MiB synced, 7.0 MiB remaining (2 of 5 files)"));
+        QCOMPARE(formatProgress(p),
+            QStringLiteral("3.0 MiB of 10.0 MiB synced, 7.0 MiB remaining (2 of 5 files)"));
         QCOMPARE(progressPermille(p), 300);
         p.phase = QStringLiteral("done");
         QCOMPARE(progressPermille(p), 1000);
@@ -83,7 +84,8 @@ private Q_SLOTS:
         QVERIFY(f.startLoggedIn());
         const QString docs = f.server.addFolder(QStringLiteral("Docs"));
         const QString id = f.mount(docs, QStringLiteral("Docs"));
-        QVERIFY(writeFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/up.bin"), QByteArray(900000, 'u')));
+        QVERIFY(writeFile(
+            f.localDir(QStringLiteral("Docs")) + QStringLiteral("/up.bin"), QByteArray(900000, 'u')));
         const SyncResult r = f.sync(id);
         QCOMPARE(r.status, SyncResult::Success);
         QCOMPARE(r.uploaded, 1);

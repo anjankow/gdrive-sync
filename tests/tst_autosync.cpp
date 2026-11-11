@@ -51,10 +51,11 @@ private Q_SLOTS:
         const QString dir = f.paths().unitDir;
         QCOMPARE(QString::fromUtf8(readFile(dir + QStringLiteral("/gdrive-sync.service"))),
             Scheduler::serviceUnit(QStringLiteral("/usr/bin/gdrive-sync")));
-        QCOMPARE(QString::fromUtf8(readFile(dir + QStringLiteral("/gdrive-sync.timer"))), Scheduler::timerUnit(30));
+        QCOMPARE(QString::fromUtf8(readFile(dir + QStringLiteral("/gdrive-sync.timer"))),
+            Scheduler::timerUnit(30));
         QCOMPARE(f.systemctlCalls,
-            (QStringList { QStringLiteral("daemon-reload"), QStringLiteral("enable --now gdrive-sync.timer"),
-                QStringLiteral("restart gdrive-sync.timer") }));
+            (QStringList {QStringLiteral("daemon-reload"), QStringLiteral("enable --now gdrive-sync.timer"),
+                QStringLiteral("restart gdrive-sync.timer")}));
 
         // changing the interval rewrites the timer
         changed.clear();
@@ -78,7 +79,8 @@ private Q_SLOTS:
         QVERIFY(!QFile::exists(f.paths().unitDir + QStringLiteral("/gdrive-sync.timer")));
         QVERIFY(!QFile::exists(f.paths().unitDir + QStringLiteral("/gdrive-sync.service")));
         QCOMPARE(f.systemctlCalls,
-            (QStringList { QStringLiteral("disable --now gdrive-sync.timer"), QStringLiteral("daemon-reload") }));
+            (QStringList {
+                QStringLiteral("disable --now gdrive-sync.timer"), QStringLiteral("daemon-reload")}));
     }
 
     void failedInstallationLeavesNothingBehind()
@@ -145,7 +147,7 @@ private Q_SLOTS:
         QSignalSpy finished(f.core.get(), &AppCore::syncFinished);
         QVERIFY(f.core->syncAll(false));
         QVERIFY(finished.wait(20000));
-        QCOMPARE(f.notifier.events, QStringList { QStringLiteral("syncFailed") });
+        QCOMPARE(f.notifier.events, QStringList {QStringLiteral("syncFailed")});
     }
 };
 

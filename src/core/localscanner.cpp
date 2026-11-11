@@ -22,7 +22,8 @@ LocalTree scanLocalTree(const QString& root, QStringList* skipped, const std::at
         const QString rel = rootDir.relativeFilePath(info.absoluteFilePath());
         if (info.isSymLink() || (!info.isFile() && !info.isDir())) {
             if (skipped)
-                skipped->append(QStringLiteral("%1: symbolic links and special files are not synced").arg(rel));
+                skipped->append(
+                    QStringLiteral("%1: symbolic links and special files are not synced").arg(rel));
             continue;
         }
         if (info.fileName().endsWith(partialSuffix()))

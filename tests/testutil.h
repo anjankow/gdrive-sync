@@ -38,7 +38,10 @@ inline void touchLater(const QString& path, int seconds = 5)
 
 class FakePlaces : public gds::PlacesIntegration {
 public:
-    void addPlace(const QString& localPath, const QString& label) override { places.insert(localPath, label); }
+    void addPlace(const QString& localPath, const QString& label) override
+    {
+        places.insert(localPath, label);
+    }
     void removePlace(const QString& localPath) override { places.remove(localPath); }
     QMap<QString, QString> places;
 };

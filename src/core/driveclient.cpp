@@ -33,8 +33,8 @@ namespace {
     }
 }
 
-DriveClient::DriveClient(GoogleEndpoints endpoints, std::shared_ptr<TokenSource> tokens,
-    const std::atomic_bool* cancel)
+DriveClient::DriveClient(
+    GoogleEndpoints endpoints, std::shared_ptr<TokenSource> tokens, const std::atomic_bool* cancel)
     : m_endpoints(std::move(endpoints))
     , m_tokens(std::move(tokens))
     , m_cancel(cancel)
@@ -96,7 +96,8 @@ DriveError DriveClient::toError(const HttpResponse& response)
         e.message = response.errorString.isEmpty() ? QStringLiteral("Network error") : response.errorString;
         return e;
     }
-    const QJsonObject err = QJsonDocument::fromJson(response.body).object().value(QStringLiteral("error")).toObject();
+    const QJsonObject err
+        = QJsonDocument::fromJson(response.body).object().value(QStringLiteral("error")).toObject();
     e.message = err.value(QStringLiteral("message")).toString();
     const QJsonArray errors = err.value(QStringLiteral("errors")).toArray();
     if (!errors.isEmpty())
@@ -115,7 +116,7 @@ DriveError DriveClient::toError(const HttpResponse& response)
 /// Sends an authorized request. Handles token refresh on 401 and retries
 /// transient failures with exponential backoff as recommended in
 /// https://developers.google.com/workspace/drive/api/guides/handle-errors
-HttpResponse DriveClient::send(HttpRequest request, const HttpProgress& progress, bool retryable)
+HttpResponse DriveClient::send(const HttpRequest& request, const HttpProgress& progress, bool retryable)
 {
     bool refreshed = false;
     for (int attempt = 0;; ++attempt) {
@@ -124,9 +125,8 @@ HttpResponse DriveClient::send(HttpRequest request, const HttpProgress& progress
         if (token.isEmpty()) {
             HttpResponse r;
             r.status = 401;
-            r.body = QJsonDocument(
-                QJsonObject { { QStringLiteral("error"),
-                    QJsonObject { { QStringLiteral("message"), tokenError } } } })
+            r.body = QJsonDocument(QJsonObject {{QStringLiteral("error"),
+                                       QJsonObject {{QStringLiteral("message"), tokenError}}}})
                          .toJson();
             return r;
         }
@@ -159,7 +159,8 @@ HttpResponse DriveClient::send(HttpRequest request, const HttpProgress& progress
         const bool maybeProcessed = resp.status == 0 || resp.status >= 500;
         if (!transient || attempt >= m_maxRetries || (!retryable && maybeProcessed))
             return resp;
-        const int delay = m_retryBaseMs * (1 << attempt) + int(QRandomGenerator::global()->bounded(m_retryBaseMs / 2 + 1));
+        const int delay = m_retryBaseMs * (1 << attempt)
+            + int(QRandomGenerator::global()->bounded(m_retryBaseMs / 2 + 1));
         if (!sleepCancellable(delay)) {
             resp.cancelled = true;
             return resp;
@@ -171,12 +172,13 @@ DriveResult<AccountInfo> DriveClient::about()
 {
     HttpRequest req;
     req.url = withQuery(m_endpoints.apiBase + QStringLiteral("/about"),
-        { { QStringLiteral("fields"), QStringLiteral("user(displayName,emailAddress)") } });
+        {{QStringLiteral("fields"), QStringLiteral("user(displayName,emailAddress)")}});
     const HttpResponse resp = send(req);
     DriveResult<AccountInfo> result;
     result.error = toError(resp);
     if (result.ok()) {
-        const QJsonObject user = QJsonDocument::fromJson(resp.body).object().value(QStringLiteral("user")).toObject();
+        const QJsonObject user
+            = QJsonDocument::fromJson(resp.body).object().value(QStringLiteral("user")).toObject();
         result.value.email = user.value(QStringLiteral("emailAddress")).toString();
         result.value.displayName = user.value(QStringLiteral("displayName")).toString();
     }
@@ -192,14 +194,14 @@ DriveResult<QVector<DriveItem>> DriveClient::listChildren(const QString& folderI
     QString pageToken;
     do {
         QList<QPair<QString, QString>> items {
-            { QStringLiteral("q"), q },
-            { QStringLiteral("fields"), QStringLiteral("nextPageToken,files(%1)").arg(kItemFields) },
-            { QStringLiteral("pageSize"), QStringLiteral("1000") },
-            { QStringLiteral("spaces"), QStringLiteral("drive") },
-            { QStringLiteral("orderBy"), QStringLiteral("name") },
+            {QStringLiteral("q"), q},
+            {QStringLiteral("fields"), QStringLiteral("nextPageToken,files(%1)").arg(kItemFields)},
+            {QStringLiteral("pageSize"), QStringLiteral("1000")},
+            {QStringLiteral("spaces"), QStringLiteral("drive")},
+            {QStringLiteral("orderBy"), QStringLiteral("name")},
         };
         if (!pageToken.isEmpty())
-            items.append({ QStringLiteral("pageToken"), pageToken });
+            items.append({QStringLiteral("pageToken"), pageToken});
         HttpRequest req;
         req.url = withQuery(m_endpoints.apiBase + QStringLiteral("/files"), items);
         const HttpResponse resp = send(req);
@@ -226,7 +228,7 @@ DriveError DriveClient::download(const QString& fileId, const QString& destPath,
     }
     HttpRequest req;
     req.url = withQuery(m_endpoints.apiBase + QStringLiteral("/files/") + fileId,
-        { { QStringLiteral("alt"), QStringLiteral("media") } });
+        {{QStringLiteral("alt"), QStringLiteral("media")}});
     req.sink = &file;
     req.followRedirects = true;
     const HttpResponse resp = send(req, progress);
@@ -241,8 +243,8 @@ DriveError DriveClient::download(const QString& fileId, const QString& destPath,
     return error;
 }
 
-DriveResult<DriveItem> DriveClient::upload(const QString& localPath, const QString& name, const QString& parentId,
-    const QString& existingId, qint64 modifiedMs, const HttpProgress& progress)
+DriveResult<DriveItem> DriveClient::upload(const QString& localPath, const QString& name,
+    const QString& parentId, const QString& existingId, qint64 modifiedMs, const HttpProgress& progress)
 {
     DriveResult<DriveItem> result;
     QFile file(localPath);
@@ -262,13 +264,14 @@ DriveResult<DriveItem> DriveClient::upload(const QString& localPath, const QStri
     if (existingId.isEmpty()) {
         init.method = "POST";
         meta.insert(QStringLiteral("name"), name);
-        meta.insert(QStringLiteral("parents"), QJsonArray { parentId });
+        meta.insert(QStringLiteral("parents"), QJsonArray {parentId});
     } else {
         init.method = "PATCH";
         base += QLatin1Char('/') + existingId;
     }
     init.url = withQuery(base,
-        { { QStringLiteral("uploadType"), QStringLiteral("resumable") }, { QStringLiteral("fields"), kItemFields } });
+        {{QStringLiteral("uploadType"), QStringLiteral("resumable")},
+            {QStringLiteral("fields"), kItemFields}});
     init.body = QJsonDocument(meta).toJson(QJsonDocument::Compact);
     init.headers.append(HttpHeader("Content-Type", "application/json; charset=UTF-8"));
     init.headers.append(HttpHeader("X-Upload-Content-Type", "application/octet-stream"));
@@ -334,7 +337,8 @@ DriveResult<DriveItem> DriveClient::upload(const QString& localPath, const QStri
             result.error = toError(resp);
             if (result.ok()) {
                 result.error.kind = DriveError::Api;
-                result.error.message = QStringLiteral("The upload could not be completed (HTTP %1)").arg(resp.status);
+                result.error.message
+                    = QStringLiteral("The upload could not be completed (HTTP %1)").arg(resp.status);
             }
             return result;
         }
@@ -373,12 +377,13 @@ DriveResult<DriveItem> DriveClient::createFolder(const QString& name, const QStr
 {
     HttpRequest req;
     req.method = "POST";
-    req.url = withQuery(m_endpoints.apiBase + QStringLiteral("/files"), { { QStringLiteral("fields"), kItemFields } });
+    req.url = withQuery(
+        m_endpoints.apiBase + QStringLiteral("/files"), {{QStringLiteral("fields"), kItemFields}});
     req.headers.append(HttpHeader("Content-Type", "application/json; charset=UTF-8"));
     req.body = QJsonDocument(QJsonObject {
-                                 { QStringLiteral("name"), name },
-                                 { QStringLiteral("mimeType"), driveFolderMimeType() },
-                                 { QStringLiteral("parents"), QJsonArray { parentId } },
+                                 {QStringLiteral("name"), name},
+                                 {QStringLiteral("mimeType"), driveFolderMimeType()},
+                                 {QStringLiteral("parents"), QJsonArray {parentId}},
                              })
                    .toJson(QJsonDocument::Compact);
     // Not retried blindly: a retry after a lost response could create a duplicate folder.
@@ -395,9 +400,9 @@ DriveError DriveClient::trash(const QString& fileId)
     HttpRequest req;
     req.method = "PATCH";
     req.url = withQuery(m_endpoints.apiBase + QStringLiteral("/files/") + fileId,
-        { { QStringLiteral("fields"), QStringLiteral("id,trashed") } });
+        {{QStringLiteral("fields"), QStringLiteral("id,trashed")}});
     req.headers.append(HttpHeader("Content-Type", "application/json; charset=UTF-8"));
-    req.body = QJsonDocument(QJsonObject { { QStringLiteral("trashed"), true } }).toJson(QJsonDocument::Compact);
+    req.body = QJsonDocument(QJsonObject {{QStringLiteral("trashed"), true}}).toJson(QJsonDocument::Compact);
     return toError(send(req));
 }
 

@@ -4,7 +4,7 @@ namespace gds {
 
 QString formatBytes(qint64 bytes)
 {
-    static const char* units[] = { "B", "KiB", "MiB", "GiB", "TiB" };
+    static const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
     if (bytes < 1024)
         return QStringLiteral("%1 B").arg(qMax<qint64>(0, bytes));
     double value = double(bytes);
@@ -40,7 +40,8 @@ QString formatResult(const SyncResult& r)
     QString text;
     switch (r.status) {
     case SyncResult::Success:
-        text = QStringLiteral("Synced: %1 downloaded, %2 uploaded, %3 deleted locally, %4 deleted on Drive (%5)")
+        text = QStringLiteral(
+            "Synced: %1 downloaded, %2 uploaded, %3 deleted locally, %4 deleted on Drive (%5)")
                    .arg(r.downloaded)
                    .arg(r.uploaded)
                    .arg(r.deletedLocal)
@@ -58,7 +59,8 @@ QString formatResult(const SyncResult& r)
         break;
     }
     if (r.needsAttention()) {
-        text += QStringLiteral(" — %1 deletion(s) and %2 conflict(s) pending; run a manual sync to review them")
+        text += QStringLiteral(
+            " — %1 deletion(s) and %2 conflict(s) pending; run a manual sync to review them")
                     .arg(r.pendingDeletions)
                     .arg(r.pendingConflicts);
     }

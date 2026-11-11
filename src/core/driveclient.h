@@ -15,7 +15,10 @@ namespace gds {
 
 class TokenSource;
 
-inline QString driveFolderMimeType() { return QStringLiteral("application/vnd.google-apps.folder"); }
+inline QString driveFolderMimeType()
+{
+    return QStringLiteral("application/vnd.google-apps.folder");
+}
 
 struct DriveItem {
     QString id;
@@ -44,8 +47,7 @@ struct DriveError {
     explicit operator bool() const { return !ok(); }
 };
 
-template <typename T>
-struct DriveResult {
+template <typename T> struct DriveResult {
     T value {};
     DriveError error;
     bool ok() const { return error.ok(); }
@@ -92,7 +94,7 @@ public:
     static QString escapeQueryValue(const QString& value);
 
 private:
-    HttpResponse send(HttpRequest request, const HttpProgress& progress = {}, bool retryable = true);
+    HttpResponse send(const HttpRequest& request, const HttpProgress& progress = {}, bool retryable = true);
     static DriveError toError(const HttpResponse& response);
     static DriveItem parseItem(const QJsonObject& obj);
     bool sleepCancellable(int ms) const;

@@ -13,14 +13,18 @@
 namespace gds {
 
 namespace {
-    QString normalized(const QString& path) { return QDir::cleanPath(QDir(path).absolutePath()); }
+    QString normalized(const QString& path)
+    {
+        return QDir::cleanPath(QDir(path).absolutePath());
+    }
     bool isSameOrInside(const QString& path, const QString& dir)
     {
         return path == dir || path.startsWith(dir + QLatin1Char('/'));
     }
 }
 
-FolderManager::FolderManager(KSharedConfig::Ptr config, QString stateDir, PlacesIntegration* places, QObject* parent)
+FolderManager::FolderManager(
+    KSharedConfig::Ptr config, QString stateDir, PlacesIntegration* places, QObject* parent)
     : QObject(parent)
     , m_config(std::move(config))
     , m_stateDir(std::move(stateDir))
@@ -105,13 +109,14 @@ QString FolderManager::validateDestination(const QString& path) const
     for (const FolderConfig& f : m_folders) {
         const QString other = normalized(f.localPath);
         if (isSameOrInside(clean, other) || isSameOrInside(other, clean))
-            return QStringLiteral("The destination overlaps with the already mounted folder %1.").arg(f.localPath);
+            return QStringLiteral("The destination overlaps with the already mounted folder %1.")
+                .arg(f.localPath);
     }
     return {};
 }
 
-QString FolderManager::addFolder(const QString& driveFolderId, const QString& driveFolderName,
-    const QString& localPath, QString* error)
+QString FolderManager::addFolder(
+    const QString& driveFolderId, const QString& driveFolderName, const QString& localPath, QString* error)
 {
     const auto setError = [error](const QString& e) {
         if (error)
@@ -122,7 +127,8 @@ QString FolderManager::addFolder(const QString& driveFolderId, const QString& dr
         return setError(QStringLiteral("No Google Drive folder selected."));
     for (const FolderConfig& f : qAsConst(m_folders)) {
         if (f.driveFolderId == driveFolderId)
-            return setError(QStringLiteral("This Google Drive folder is already mounted at %1.").arg(f.localPath));
+            return setError(
+                QStringLiteral("This Google Drive folder is already mounted at %1.").arg(f.localPath));
     }
     const QString problem = validateDestination(localPath);
     if (!problem.isEmpty())

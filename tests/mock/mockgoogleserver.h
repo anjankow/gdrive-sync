@@ -73,6 +73,8 @@ public:
     void failNext(const QString& pathPart, int status, int count = 1, const QByteArray& method = {});
     /// Delay between 16 KiB chunks of downloads (slow network simulation).
     void setDownloadChunkDelayMs(int ms);
+    /// Every request is answered only after this delay (slow server simulation).
+    void setResponseDelayMs(int ms);
     /// The next upload PUT is cut off after \p bytes were stored.
     void interruptNextUploadAfter(qint64 bytes);
 
@@ -99,7 +101,8 @@ private:
     void onReadyRead(QTcpSocket* socket);
     void handle(QTcpSocket* socket, const Request& request);
     void reply(QTcpSocket* socket, int status, const QByteArray& body = {},
-        const QList<QPair<QByteArray, QByteArray>>& headers = {}, const QByteArray& contentType = "application/json");
+        const QList<QPair<QByteArray, QByteArray>>& headers = {},
+        const QByteArray& contentType = "application/json");
     void replyError(QTcpSocket* socket, int status, const QString& reason, const QString& message);
     void replyThrottled(QTcpSocket* socket, const QByteArray& body);
     bool authorized(const Request& request) const;
@@ -130,6 +133,7 @@ private:
     bool m_deny = false;
     int m_maxPageSize = 1000;
     int m_chunkDelayMs = 0;
+    int m_responseDelayMs = 0;
     qint64 m_interruptUploadAfter = -1;
     struct Fault {
         QString pathPart;

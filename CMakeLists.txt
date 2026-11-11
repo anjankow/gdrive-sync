@@ -26,6 +26,10 @@ find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS
 set(CMAKE_AUTOMOC ON)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # triggered by Qt's own macros (QSKIP, QVERIFY2, ...)
+    add_compile_options(-Wno-gnu-zero-variadic-macro-arguments)
+endif()
 add_compile_definitions(QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII QT_NO_URL_CAST_FROM_STRING
     QT_NO_KEYWORDS QT_STRICT_ITERATORS TRANSLATION_DOMAIN="gdrive-sync")
 if(GDS_WERROR)

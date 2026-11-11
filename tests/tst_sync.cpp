@@ -32,7 +32,8 @@ private Q_SLOTS:
         QCOMPARE(readFile(dir + QStringLiteral("/sub/b.txt")), QByteArray("bravo"));
         // nothing from outside the selected folder arrived
         const LocalTree tree = scanLocalTree(dir);
-        QCOMPARE(tree.keys(), (QStringList { QStringLiteral("a.txt"), QStringLiteral("sub"), QStringLiteral("sub/b.txt") }));
+        QCOMPARE(tree.keys(),
+            (QStringList {QStringLiteral("a.txt"), QStringLiteral("sub"), QStringLiteral("sub/b.txt")}));
         // and Drive was only asked about the selected folder and its sub-folder
         QCOMPARE(f.server.requestCount(QStringLiteral("GET /drive/v3/files")), 4); // 2 listings + 2 downloads
     }
@@ -152,13 +153,15 @@ private Q_SLOTS:
         Fixture f;
         QVERIFY(f.startLoggedIn());
         const QString docs = f.server.addFolder(QStringLiteral("Docs"));
-        f.server.addFile(QStringLiteral("Report"), docs, QByteArray(), QStringLiteral("application/vnd.google-apps.document"));
+        f.server.addFile(QStringLiteral("Report"), docs, QByteArray(),
+            QStringLiteral("application/vnd.google-apps.document"));
         f.server.addFile(QStringLiteral("real.txt"), docs, "real");
         const QString id = f.mount(docs, QStringLiteral("Docs"));
         const SyncResult r = f.sync(id);
         QCOMPARE(r.status, SyncResult::Success);
         QCOMPARE(r.downloaded, 1);
-        QCOMPARE(QDir(f.localDir(QStringLiteral("Docs"))).entryList(QDir::Files), QStringList { QStringLiteral("real.txt") });
+        QCOMPARE(QDir(f.localDir(QStringLiteral("Docs"))).entryList(QDir::Files),
+            QStringList {QStringLiteral("real.txt")});
         QVERIFY(r.skipped.join(QLatin1Char('\n')).contains(QStringLiteral("Report")));
         QVERIFY(f.server.existsPath(QStringLiteral("Docs/Report")));
     }
@@ -184,16 +187,19 @@ private Q_SLOTS:
         QCOMPARE(f.askedConflicts.first().kind, ConflictKind::BothModified);
 
         QCOMPARE(readFile(dir + QStringLiteral("/a.txt")), QByteArray("remote change"));
-        const QStringList copies = QDir(dir).entryList({ QStringLiteral("a (conflict copy*.txt") }, QDir::Files);
+        const QStringList copies
+            = QDir(dir).entryList({QStringLiteral("a (conflict copy*.txt")}, QDir::Files);
         QCOMPARE(copies.size(), 1);
         QCOMPARE(readFile(dir + QLatin1Char('/') + copies.first()), QByteArray("local change"));
-        QCOMPARE(f.server.contentByPath(QStringLiteral("Docs/") + copies.first()), QByteArray("local change"));
+        QCOMPARE(
+            f.server.contentByPath(QStringLiteral("Docs/") + copies.first()), QByteArray("local change"));
         QCOMPARE(f.server.file(a).content, QByteArray("remote change"));
     }
 
     void conflictChoicesKeepLocalKeepRemoteAndSkip()
     {
-        for (const ConflictChoice choice : { ConflictChoice::KeepLocal, ConflictChoice::KeepRemote, ConflictChoice::Skip }) {
+        for (const ConflictChoice choice :
+            {ConflictChoice::KeepLocal, ConflictChoice::KeepRemote, ConflictChoice::Skip}) {
             Fixture f;
             QVERIFY(f.startLoggedIn(SyncDirection::TwoWay));
             const QString docs = f.server.addFolder(QStringLiteral("Docs"));
@@ -206,8 +212,10 @@ private Q_SLOTS:
             f.server.setContent(a, "remote change");
             f.conflictChoice = choice;
             QCOMPARE(f.sync(id).status, SyncResult::Success);
-            const QByteArray expectedLocal = choice == ConflictChoice::KeepRemote ? "remote change" : "local change";
-            const QByteArray expectedRemote = choice == ConflictChoice::KeepLocal ? "local change" : "remote change";
+            const QByteArray expectedLocal
+                = choice == ConflictChoice::KeepRemote ? "remote change" : "local change";
+            const QByteArray expectedRemote
+                = choice == ConflictChoice::KeepLocal ? "local change" : "remote change";
             QCOMPARE(readFile(path), expectedLocal);
             QCOMPARE(f.server.file(a).content, expectedRemote);
         }
@@ -254,7 +262,8 @@ private Q_SLOTS:
         QCOMPARE(r.status, SyncResult::Failed);
         QCOMPARE(r.errors.size(), 1);
         QCOMPARE(r.downloaded, 1);
-        QCOMPARE(readFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/good.txt")), QByteArray("good"));
+        QCOMPARE(
+            readFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/good.txt")), QByteArray("good"));
         // the failed file is picked up by the next sync
         const SyncResult again = f.sync(id);
         QCOMPARE(again.status, SyncResult::Success);

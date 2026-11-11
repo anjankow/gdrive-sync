@@ -33,9 +33,8 @@ qint64 SyncPlan::transferBytes() const
 
 int SyncPlan::transferCount() const
 {
-    return int(std::count_if(actions.cbegin(), actions.cend(), [](const SyncAction& a) {
-        return a.type == ActionType::Download || a.type == ActionType::Upload;
-    }));
+    return int(std::count_if(actions.cbegin(), actions.cend(),
+        [](const SyncAction& a) { return a.type == ActionType::Download || a.type == ActionType::Upload; }));
 }
 
 QVector<SyncAction> SyncPlan::conflicts() const
@@ -94,7 +93,10 @@ namespace {
         return path.size() > dir.size() && path.startsWith(dir) && path.at(dir.size()) == QLatin1Char('/');
     }
 
-    int depth(const QString& path) { return path.count(QLatin1Char('/')); }
+    int depth(const QString& path)
+    {
+        return path.count(QLatin1Char('/'));
+    }
 
     void planFile(SyncPlan& plan, const QString& path, const LocalItem* l, const RemoteItem* r,
         const StateEntry* s, SyncDirection dir, const Md5Provider& localMd5)
@@ -230,8 +232,8 @@ SyncPlan buildPlan(const LocalTree& local, const RemoteTree& remote, const State
     // Paths blocked because a file on one side is a folder on the other.
     QStringList blocked;
     const auto isBlocked = [&blocked](const QString& p) {
-        return std::any_of(blocked.cbegin(), blocked.cend(),
-            [&p](const QString& b) { return p == b || isUnder(p, b); });
+        return std::any_of(
+            blocked.cbegin(), blocked.cend(), [&p](const QString& b) { return p == b || isUnder(p, b); });
     };
 
     QStringList dirsGoneRemotely; // in state, still local, missing on Drive

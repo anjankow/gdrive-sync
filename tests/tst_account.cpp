@@ -28,7 +28,8 @@ class TestAccount : public QObject {
     {
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("my-client-id"), QStringLiteral("my-client-secret")));
+        QVERIFY(
+            f.core->setClientCredentials(QStringLiteral("my-client-id"), QStringLiteral("my-client-secret")));
     }
 
     /// True when \p needle appears in any file below \p dir.
@@ -92,7 +93,8 @@ private Q_SLOTS:
         const auto t = f.server.lastTokenRequest();
         QCOMPARE(t.value(QStringLiteral("grant_type")), QStringLiteral("authorization_code"));
         QCOMPARE(t.value(QStringLiteral("redirect_uri")), q.value(QStringLiteral("redirect_uri")));
-        QCOMPARE(Pkce::challengeS256(t.value(QStringLiteral("code_verifier"))), q.value(QStringLiteral("code_challenge")));
+        QCOMPARE(Pkce::challengeS256(t.value(QStringLiteral("code_verifier"))),
+            q.value(QStringLiteral("code_challenge")));
         QCOMPARE(t.value(QStringLiteral("client_secret")), QStringLiteral("my-client-secret"));
     }
 
@@ -134,10 +136,10 @@ private Q_SLOTS:
         QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
         QNetworkAccessManager nam;
         f.core.reset();
-        f.core = std::make_unique<AppCore>(
-            GoogleEndpoints::forTestServer(f.server.baseUrl()), &f.secrets, &f.places, &f.notifier, f.paths(),
-            [&](const QUrl& url) {
-                const QString redirect = QUrlQuery(url).queryItemValue(QStringLiteral("redirect_uri"), QUrl::FullyDecoded);
+        f.core = std::make_unique<AppCore>(GoogleEndpoints::forTestServer(f.server.baseUrl()), &f.secrets,
+            &f.places, &f.notifier, f.paths(), [&](const QUrl& url) {
+                const QString redirect
+                    = QUrlQuery(url).queryItemValue(QStringLiteral("redirect_uri"), QUrl::FullyDecoded);
                 nam.get(QNetworkRequest(QUrl(redirect + QStringLiteral("/?code=stolen&state=wrong"))));
                 return true;
             });
@@ -161,8 +163,8 @@ private Q_SLOTS:
         QVERIFY(f.initialize());
         // browser never comes back
         f.core.reset();
-        f.core = std::make_unique<AppCore>(GoogleEndpoints::forTestServer(f.server.baseUrl()), &f.secrets, &f.places,
-            &f.notifier, f.paths(), [](const QUrl&) { return true; });
+        f.core = std::make_unique<AppCore>(GoogleEndpoints::forTestServer(f.server.baseUrl()), &f.secrets,
+            &f.places, &f.notifier, f.paths(), [](const QUrl&) { return true; });
         QSignalSpy init(f.core.get(), &AppCore::initialized);
         f.core->initialize();
         QVERIFY(init.count() > 0 || init.wait());
@@ -249,7 +251,9 @@ private Q_SLOTS:
         // the direction is asked again for the new login session
         QCOMPARE(f.core->direction(), SyncDirection::Unset);
         // the consent/account chooser is always requested so another account can be picked
-        QVERIFY(f.server.lastAuthorizationQuery().value(QStringLiteral("prompt")).contains(QStringLiteral("select_account")));
+        QVERIFY(f.server.lastAuthorizationQuery()
+                    .value(QStringLiteral("prompt"))
+                    .contains(QStringLiteral("select_account")));
     }
 
     void unavailableWalletIsReported()

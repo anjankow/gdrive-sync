@@ -55,8 +55,8 @@ QString describe(const SyncPlan& plan)
 {
     QStringList out;
     for (const SyncAction& a : plan.actions) {
-        static const char* names[] = { "rename", "mkdirL", "mkdirR", "download", "upload", "deleteL", "deleteR",
-            "adopt", "forget", "conflict" };
+        static const char* names[] = {"rename", "mkdirL", "mkdirR", "download", "upload", "deleteL",
+            "deleteR", "adopt", "forget", "conflict"};
         out.append(QLatin1String(names[int(a.type)]) + QLatin1Char(':') + a.path);
     }
     return out.join(QLatin1Char(' '));
@@ -80,9 +80,9 @@ private Q_SLOTS:
 
     void initialDownloadOfRemoteTree()
     {
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) },
-            { QStringLiteral("sub"), rdir(QStringLiteral("2")) },
-            { QStringLiteral("sub/b.txt"), rfile(QStringLiteral("3"), 20, QStringLiteral("m3")) } };
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))},
+            {QStringLiteral("sub"), rdir(QStringLiteral("2"))},
+            {QStringLiteral("sub/b.txt"), rfile(QStringLiteral("3"), 20, QStringLiteral("m3"))}};
         const SyncPlan p = plan({}, r, {}, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QStringLiteral("mkdirL:sub download:a.txt download:sub/b.txt"));
         QCOMPARE(p.transferBytes(), 30);
@@ -92,42 +92,43 @@ private Q_SLOTS:
 
     void newLocalFileIsUploadedExceptInDriveToLocal()
     {
-        LocalTree l { { QStringLiteral("n.txt"), lfile(5) }, { QStringLiteral("d"), ldir() } };
+        LocalTree l {{QStringLiteral("n.txt"), lfile(5)}, {QStringLiteral("d"), ldir()}};
         QCOMPARE(describe(plan(l, {}, {}, SyncDirection::TwoWay)), QStringLiteral("mkdirR:d upload:n.txt"));
-        QCOMPARE(describe(plan(l, {}, {}, SyncDirection::LocalToDrive)), QStringLiteral("mkdirR:d upload:n.txt"));
+        QCOMPARE(
+            describe(plan(l, {}, {}, SyncDirection::LocalToDrive)), QStringLiteral("mkdirR:d upload:n.txt"));
         QCOMPARE(describe(plan(l, {}, {}, SyncDirection::DriveToLocal)), QString());
     }
 
     void newRemoteFileIsIgnoredInLocalToDrive()
     {
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         QCOMPARE(describe(plan({}, r, {}, SyncDirection::LocalToDrive)), QString());
         QCOMPARE(describe(plan({}, r, {}, SyncDirection::DriveToLocal)), QStringLiteral("download:a.txt"));
     }
 
     void unchangedFilesProduceNoActions()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(10) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
-        for (auto d : { SyncDirection::TwoWay, SyncDirection::DriveToLocal, SyncDirection::LocalToDrive })
+        LocalTree l {{QStringLiteral("a.txt"), lfile(10)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
+        for (auto d : {SyncDirection::TwoWay, SyncDirection::DriveToLocal, SyncDirection::LocalToDrive})
             QCOMPARE(describe(plan(l, r, s, d)), QString());
     }
 
     void touchedButIdenticalFileIsNotUploaded()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(10, 2000) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(10, 2000)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         m_md5.insert(QStringLiteral("a.txt"), QStringLiteral("m1"));
         QCOMPARE(describe(plan(l, r, s, SyncDirection::TwoWay)), QStringLiteral("adopt:a.txt"));
     }
 
     void localChangeIsUploaded()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(12, 2000) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(12, 2000)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         QCOMPARE(describe(plan(l, r, s, SyncDirection::TwoWay)), QStringLiteral("upload:a.txt"));
         QCOMPARE(describe(plan(l, r, s, SyncDirection::LocalToDrive)), QStringLiteral("upload:a.txt"));
         QCOMPARE(describe(plan(l, r, s, SyncDirection::DriveToLocal)), QString());
@@ -135,9 +136,9 @@ private Q_SLOTS:
 
     void remoteChangeIsDownloaded()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(10) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(10)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         QCOMPARE(describe(plan(l, r, s, SyncDirection::TwoWay)), QStringLiteral("download:a.txt"));
         QCOMPARE(describe(plan(l, r, s, SyncDirection::DriveToLocal)), QStringLiteral("download:a.txt"));
         QCOMPARE(describe(plan(l, r, s, SyncDirection::LocalToDrive)), QString());
@@ -145,9 +146,9 @@ private Q_SLOTS:
 
     void bothChangedIsConflictInTwoWayAndSourceWinsOtherwise()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(12, 2000) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(12, 2000)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         const SyncPlan p = plan(l, r, s, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QStringLiteral("conflict:a.txt"));
         QCOMPARE(p.conflicts().first().conflict, ConflictKind::BothModified);
@@ -157,11 +158,11 @@ private Q_SLOTS:
 
     void remoteDeletionPropagatesAsLocalDeletion()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(10) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(10)}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         const SyncPlan p = plan(l, {}, s, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QStringLiteral("deleteL:a.txt"));
-        QCOMPARE(p.localDeletions(), QStringList { QStringLiteral("a.txt") });
+        QCOMPARE(p.localDeletions(), QStringList {QStringLiteral("a.txt")});
         QVERIFY(p.hasDeletions());
         QCOMPARE(describe(plan(l, {}, s, SyncDirection::DriveToLocal)), QStringLiteral("deleteL:a.txt"));
         // local is the source of truth: the file is restored on Drive instead
@@ -170,68 +171,66 @@ private Q_SLOTS:
 
     void localDeletionPropagatesAsRemoteDeletion()
     {
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         const SyncPlan p = plan({}, r, s, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QStringLiteral("deleteR:a.txt"));
-        QCOMPARE(p.remoteDeletions(), QStringList { QStringLiteral("a.txt") });
+        QCOMPARE(p.remoteDeletions(), QStringList {QStringLiteral("a.txt")});
         QCOMPARE(describe(plan({}, r, s, SyncDirection::LocalToDrive)), QStringLiteral("deleteR:a.txt"));
         QCOMPARE(describe(plan({}, r, s, SyncDirection::DriveToLocal)), QStringLiteral("download:a.txt"));
     }
 
     void deletionAgainstModificationIsConflict()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(12, 2000) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(12, 2000)}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         SyncPlan p = plan(l, {}, s, SyncDirection::TwoWay);
         QCOMPARE(p.conflicts().first().conflict, ConflictKind::LocalModifiedRemoteDeleted);
 
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2")) } };
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2"))}};
         p = plan({}, r, s, SyncDirection::TwoWay);
         QCOMPARE(p.conflicts().first().conflict, ConflictKind::RemoteModifiedLocalDeleted);
     }
 
     void deletedDirectoryIsRemovedAfterItsFiles()
     {
-        LocalTree l { { QStringLiteral("d"), ldir() },
-            { QStringLiteral("d/x.txt"), lfile(1) },
-            { QStringLiteral("d/sub"), ldir() },
-            { QStringLiteral("d/sub/y.txt"), lfile(1) } };
-        StateMap s { { QStringLiteral("d"), sdir(QStringLiteral("1")) },
-            { QStringLiteral("d/x.txt"), sfile(QStringLiteral("2"), 1, QStringLiteral("m")) },
-            { QStringLiteral("d/sub"), sdir(QStringLiteral("3")) },
-            { QStringLiteral("d/sub/y.txt"), sfile(QStringLiteral("4"), 1, QStringLiteral("m")) } };
+        LocalTree l {{QStringLiteral("d"), ldir()}, {QStringLiteral("d/x.txt"), lfile(1)},
+            {QStringLiteral("d/sub"), ldir()}, {QStringLiteral("d/sub/y.txt"), lfile(1)}};
+        StateMap s {{QStringLiteral("d"), sdir(QStringLiteral("1"))},
+            {QStringLiteral("d/x.txt"), sfile(QStringLiteral("2"), 1, QStringLiteral("m"))},
+            {QStringLiteral("d/sub"), sdir(QStringLiteral("3"))},
+            {QStringLiteral("d/sub/y.txt"), sfile(QStringLiteral("4"), 1, QStringLiteral("m"))}};
         const SyncPlan p = plan(l, {}, s, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QStringLiteral("deleteL:d/sub/y.txt deleteL:d/x.txt deleteL:d/sub deleteL:d"));
         QCOMPARE(p.localDeletions(),
-            (QStringList { QStringLiteral("d/sub/y.txt"), QStringLiteral("d/x.txt"), QStringLiteral("d/sub/"),
-                QStringLiteral("d/") }));
+            (QStringList {QStringLiteral("d/sub/y.txt"), QStringLiteral("d/x.txt"), QStringLiteral("d/sub/"),
+                QStringLiteral("d/")}));
     }
 
     void deletedDirectoryWithNewLocalFileIsKeptAndRecreated()
     {
-        LocalTree l { { QStringLiteral("d"), ldir() },
-            { QStringLiteral("d/old.txt"), lfile(1) },
-            { QStringLiteral("d/new.txt"), lfile(2) } };
-        StateMap s { { QStringLiteral("d"), sdir(QStringLiteral("1")) },
-            { QStringLiteral("d/old.txt"), sfile(QStringLiteral("2"), 1, QStringLiteral("m")) } };
+        LocalTree l {{QStringLiteral("d"), ldir()}, {QStringLiteral("d/old.txt"), lfile(1)},
+            {QStringLiteral("d/new.txt"), lfile(2)}};
+        StateMap s {{QStringLiteral("d"), sdir(QStringLiteral("1"))},
+            {QStringLiteral("d/old.txt"), sfile(QStringLiteral("2"), 1, QStringLiteral("m"))}};
         const SyncPlan p = plan(l, {}, s, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QStringLiteral("mkdirR:d upload:d/new.txt deleteL:d/old.txt"));
     }
 
     void locallyDeletedDirectoryIsTrashedOnDrive()
     {
-        RemoteTree r { { QStringLiteral("d"), rdir(QStringLiteral("1")) },
-            { QStringLiteral("d/x.txt"), rfile(QStringLiteral("2"), 1, QStringLiteral("m")) } };
-        StateMap s { { QStringLiteral("d"), sdir(QStringLiteral("1")) },
-            { QStringLiteral("d/x.txt"), sfile(QStringLiteral("2"), 1, QStringLiteral("m")) } };
-        QCOMPARE(describe(plan({}, r, s, SyncDirection::TwoWay)), QStringLiteral("deleteR:d/x.txt deleteR:d"));
+        RemoteTree r {{QStringLiteral("d"), rdir(QStringLiteral("1"))},
+            {QStringLiteral("d/x.txt"), rfile(QStringLiteral("2"), 1, QStringLiteral("m"))}};
+        StateMap s {{QStringLiteral("d"), sdir(QStringLiteral("1"))},
+            {QStringLiteral("d/x.txt"), sfile(QStringLiteral("2"), 1, QStringLiteral("m"))}};
+        QCOMPARE(
+            describe(plan({}, r, s, SyncDirection::TwoWay)), QStringLiteral("deleteR:d/x.txt deleteR:d"));
     }
 
     void sameContentOnBothSidesWithoutStateIsAdopted()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(10) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(10)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         m_md5.insert(QStringLiteral("a.txt"), QStringLiteral("m1"));
         QCOMPARE(describe(plan(l, r, {}, SyncDirection::TwoWay)), QStringLiteral("adopt:a.txt"));
         m_md5.insert(QStringLiteral("a.txt"), QStringLiteral("other"));
@@ -240,14 +239,14 @@ private Q_SLOTS:
 
     void goneOnBothSidesIsForgotten()
     {
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         QCOMPARE(describe(plan({}, {}, s, SyncDirection::TwoWay)), QStringLiteral("forget:a.txt"));
     }
 
     void fileVersusFolderIsSkipped()
     {
-        LocalTree l { { QStringLiteral("x"), ldir() }, { QStringLiteral("x/in.txt"), lfile(1) } };
-        RemoteTree r { { QStringLiteral("x"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("x"), ldir()}, {QStringLiteral("x/in.txt"), lfile(1)}};
+        RemoteTree r {{QStringLiteral("x"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         const SyncPlan p = plan(l, r, {}, SyncDirection::TwoWay);
         QCOMPARE(describe(p), QString());
         QCOMPARE(p.skipped.size(), 1);
@@ -255,24 +254,24 @@ private Q_SLOTS:
 
     void unsetDirectionPlansNothing()
     {
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         QVERIFY(plan({}, r, {}, SyncDirection::Unset).actions.isEmpty());
     }
 
     void conflictChoicesAreApplied()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(12, 2000) } };
-        RemoteTree r { { QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2")) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(12, 2000)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 11, QStringLiteral("m2"))}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         const SyncPlan p = plan(l, r, s, SyncDirection::TwoWay);
         const QString suffix = QStringLiteral(" (conflict copy)");
         const QString path = QStringLiteral("a.txt");
 
-        QCOMPARE(describe(applyConflictChoices(p, { { path, ConflictChoice::KeepLocal } }, l, r, suffix)),
+        QCOMPARE(describe(applyConflictChoices(p, {{path, ConflictChoice::KeepLocal}}, l, r, suffix)),
             QStringLiteral("upload:a.txt"));
-        QCOMPARE(describe(applyConflictChoices(p, { { path, ConflictChoice::KeepRemote } }, l, r, suffix)),
+        QCOMPARE(describe(applyConflictChoices(p, {{path, ConflictChoice::KeepRemote}}, l, r, suffix)),
             QStringLiteral("download:a.txt"));
-        const SyncPlan both = applyConflictChoices(p, { { path, ConflictChoice::KeepBoth } }, l, r, suffix);
+        const SyncPlan both = applyConflictChoices(p, {{path, ConflictChoice::KeepBoth}}, l, r, suffix);
         QCOMPARE(describe(both), QStringLiteral("rename:a.txt upload:a (conflict copy).txt download:a.txt"));
         QCOMPARE(both.transferBytes(), 23);
         const SyncPlan skipped = applyConflictChoices(p, {}, l, r, suffix);
@@ -282,13 +281,13 @@ private Q_SLOTS:
 
     void keepRemoteOfDeletedFileBecomesAVisibleDeletion()
     {
-        LocalTree l { { QStringLiteral("a.txt"), lfile(12, 2000) } };
-        StateMap s { { QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1")) } };
+        LocalTree l {{QStringLiteral("a.txt"), lfile(12, 2000)}};
+        StateMap s {{QStringLiteral("a.txt"), sfile(QStringLiteral("1"), 10, QStringLiteral("m1"))}};
         const SyncPlan p = plan(l, {}, s, SyncDirection::TwoWay);
-        const SyncPlan resolved = applyConflictChoices(p, { { QStringLiteral("a.txt"), ConflictChoice::KeepRemote } },
-            l, {}, QString());
+        const SyncPlan resolved = applyConflictChoices(
+            p, {{QStringLiteral("a.txt"), ConflictChoice::KeepRemote}}, l, {}, QString());
         QVERIFY(resolved.hasDeletions());
-        QCOMPARE(resolved.localDeletions(), QStringList { QStringLiteral("a.txt") });
+        QCOMPARE(resolved.localDeletions(), QStringList {QStringLiteral("a.txt")});
     }
 
     void unattendedPlanDropsDeletionsAndConflicts()
@@ -313,10 +312,13 @@ private Q_SLOTS:
 
     void conflictCopyNameAvoidsCollisions()
     {
-        LocalTree l { { QStringLiteral("d/a (c).txt"), lfile(1) } };
-        QCOMPARE(conflictCopyPath(QStringLiteral("d/a.txt"), QStringLiteral(" (c)"), l), QStringLiteral("d/a (c) 2.txt"));
-        QCOMPARE(conflictCopyPath(QStringLiteral("noext"), QStringLiteral(" (c)"), {}), QStringLiteral("noext (c)"));
-        QCOMPARE(conflictCopyPath(QStringLiteral(".hidden"), QStringLiteral(" (c)"), {}), QStringLiteral(".hidden (c)"));
+        LocalTree l {{QStringLiteral("d/a (c).txt"), lfile(1)}};
+        QCOMPARE(conflictCopyPath(QStringLiteral("d/a.txt"), QStringLiteral(" (c)"), l),
+            QStringLiteral("d/a (c) 2.txt"));
+        QCOMPARE(conflictCopyPath(QStringLiteral("noext"), QStringLiteral(" (c)"), {}),
+            QStringLiteral("noext (c)"));
+        QCOMPARE(conflictCopyPath(QStringLiteral(".hidden"), QStringLiteral(" (c)"), {}),
+            QStringLiteral(".hidden (c)"));
     }
 };
 

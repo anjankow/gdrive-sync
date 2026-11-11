@@ -13,8 +13,8 @@
 
 namespace gds {
 
-OAuthFlow::OAuthFlow(GoogleEndpoints endpoints, QString clientId, QString clientSecret, BrowserOpener opener,
-    QObject* parent)
+OAuthFlow::OAuthFlow(
+    GoogleEndpoints endpoints, QString clientId, QString clientSecret, BrowserOpener opener, QObject* parent)
     : QObject(parent)
     , m_endpoints(std::move(endpoints))
     , m_clientId(std::move(clientId))
@@ -148,11 +148,13 @@ void OAuthFlow::handleRequest(QTcpSocket* socket, const QByteArray& requestLine)
     }
     if (query.hasQueryItem(QStringLiteral("error"))) {
         const QString error = query.queryItemValue(QStringLiteral("error"), QUrl::FullyDecoded);
-        respond(socket, "200 OK", QStringLiteral("Sign-in was not completed (%1). You can close this page.").arg(error));
+        respond(socket, "200 OK",
+            QStringLiteral("Sign-in was not completed (%1). You can close this page.").arg(error));
         finishFailed(QStringLiteral("Google sign-in failed: %1").arg(error));
         return;
     }
-    respond(socket, "200 OK", QStringLiteral("Sign-in complete. You can close this page and return to the application."));
+    respond(socket, "200 OK",
+        QStringLiteral("Sign-in complete. You can close this page and return to the application."));
     stopListening();
     exchangeCode(query.queryItemValue(QStringLiteral("code"), QUrl::FullyDecoded));
 }
@@ -162,16 +164,16 @@ void OAuthFlow::exchangeCode(const QString& code)
     if (!m_nam)
         m_nam = new QNetworkAccessManager(this);
     QList<QPair<QString, QString>> fields {
-        { QStringLiteral("client_id"), m_clientId },
-        { QStringLiteral("code"), code },
-        { QStringLiteral("code_verifier"), m_verifier },
-        { QStringLiteral("grant_type"), QStringLiteral("authorization_code") },
-        { QStringLiteral("redirect_uri"), m_redirectUri },
+        {QStringLiteral("client_id"), m_clientId},
+        {QStringLiteral("code"), code},
+        {QStringLiteral("code_verifier"), m_verifier},
+        {QStringLiteral("grant_type"), QStringLiteral("authorization_code")},
+        {QStringLiteral("redirect_uri"), m_redirectUri},
     };
     if (!m_clientSecret.isEmpty())
-        fields.append({ QStringLiteral("client_secret"), m_clientSecret });
+        fields.append({QStringLiteral("client_secret"), m_clientSecret});
 
-    QNetworkRequest req { QUrl(m_endpoints.tokenUrl) };
+    QNetworkRequest req {QUrl(m_endpoints.tokenUrl)};
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/x-www-form-urlencoded"));
     req.setTransferTimeout(30000);
     QNetworkReply* reply = m_nam->post(req, formEncode(fields));

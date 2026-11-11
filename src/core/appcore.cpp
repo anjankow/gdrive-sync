@@ -7,6 +7,7 @@
 #include <KConfigGroup>
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFutureWatcher>
 #include <QNetworkAccessManager>
 #include <QStandardPaths>
@@ -40,8 +41,9 @@ AppPaths AppPaths::defaults()
     return p;
 }
 
-AppCore::AppCore(GoogleEndpoints endpoints, SecretStore* secrets, PlacesIntegration* places, Notifier* notifier,
-    AppPaths paths, OAuthFlow::BrowserOpener browser, Scheduler::SystemctlRunner systemctl, QObject* parent)
+AppCore::AppCore(GoogleEndpoints endpoints, SecretStore* secrets, PlacesIntegration* places,
+    Notifier* notifier, AppPaths paths, OAuthFlow::BrowserOpener browser,
+    Scheduler::SystemctlRunner systemctl, QObject* parent)
     : QObject(parent)
     , m_endpoints(std::move(endpoints))
     , m_secrets(secrets)
@@ -82,7 +84,9 @@ void AppCore::onStoreOpened(bool ok)
     if (m_initialized)
         return;
     if (!ok) {
-        Q_EMIT initialized(false, QStringLiteral("The KDE wallet could not be opened. It is required to store the sign-in data securely."));
+        Q_EMIT initialized(false,
+            QStringLiteral(
+                "The KDE wallet could not be opened. It is required to store the sign-in data securely."));
         return;
     }
     m_initialized = true;
@@ -179,7 +183,8 @@ void AppCore::onTokens(const OAuthTokens& tokens)
         },
         [this, source](const DriveResult<AccountInfo>& about) {
             if (!about.ok()) {
-                Q_EMIT loginFailed(QStringLiteral("Could not read the Google account: %1").arg(about.error.message));
+                Q_EMIT loginFailed(
+                    QStringLiteral("Could not read the Google account: %1").arg(about.error.message));
                 return;
             }
             if (!m_secrets->write(SecretKeys::refreshToken(), source->refreshToken())) {
@@ -231,7 +236,7 @@ void AppCore::logout()
                 req.method = "POST";
                 req.url = QUrl(endpoints.revokeUrl);
                 req.headers.append(HttpHeader("Content-Type", "application/x-www-form-urlencoded"));
-                req.body = formEncode({ { QStringLiteral("token"), refresh } });
+                req.body = formEncode({{QStringLiteral("token"), refresh}});
                 req.transferTimeoutMs = 15000;
                 QNetworkAccessManager nam;
                 httpSend(nam, req);
@@ -263,10 +268,18 @@ void AppCore::destroyEngine()
     m_engine->deleteLater(); // runs in the worker thread after the current job returned
     m_engine = nullptr;
     if (m_syncing) {
-        m_syncing = false;
         m_queue.clear();
-        Q_EMIT syncFinished(m_results);
+        finishBatch();
     }
+}
+
+void AppCore::finishBatch()
+{
+    m_syncing = false;
+    m_currentFolder.clear();
+    if (m_lock)
+        m_lock->unlock();
+    Q_EMIT syncFinished(m_results);
 }
 
 void AppCore::listDriveFolders(const QString& parentId)
@@ -309,7 +322,7 @@ bool AppCore::unmountFolder(const QString& id, QString* error)
 bool AppCore::syncFolder(const QString& id, bool interactive)
 {
     const FolderConfig* f = m_folders->find(id);
-    return f && startJobs({ *f }, interactive);
+    return f && startJobs({*f}, interactive);
 }
 
 bool AppCore::syncAll(bool interactive)
@@ -321,6 +334,13 @@ bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
 {
     if (m_syncing || !m_engine || folders.isEmpty() || direction() == SyncDirection::Unset)
         return false;
+    QDir().mkpath(m_paths.stateDir);
+    if (!m_lock) {
+        m_lock = std::make_unique<QLockFile>(m_paths.stateDir + QStringLiteral("/sync.lock"));
+        m_lock->setStaleLockTime(0);
+    }
+    if (!m_lock->tryLock(0))
+        return false; // another instance (e.g. the automatic sync) is syncing right now
     m_engine->resetCancel();
     m_results.clear();
     m_queue.clear();
@@ -344,8 +364,6 @@ bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
 void AppCore::startNextJob()
 {
     if (m_queue.isEmpty()) {
-        m_syncing = false;
-        m_currentFolder.clear();
         if (!m_batchInteractive && m_notifier) {
             int deletions = 0, conflicts = 0, failed = 0;
             for (const SyncResult& r : qAsConst(m_results)) {
@@ -366,7 +384,7 @@ void AppCore::startNextJob()
                     QStringLiteral("The automatic sync failed for %1 folder(s).").arg(failed));
             }
         }
-        Q_EMIT syncFinished(m_results);
+        finishBatch();
         return;
     }
     const SyncJob job = m_queue.takeFirst();

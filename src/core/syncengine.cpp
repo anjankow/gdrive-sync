@@ -38,7 +38,10 @@ namespace {
         const int slash = path.lastIndexOf(QLatin1Char('/'));
         return slash < 0 ? QString() : path.left(slash);
     }
-    QString baseName(const QString& path) { return path.mid(path.lastIndexOf(QLatin1Char('/')) + 1); }
+    QString baseName(const QString& path)
+    {
+        return path.mid(path.lastIndexOf(QLatin1Char('/')) + 1);
+    }
     bool isUnder(const QString& path, const QString& dir)
     {
         return path.size() > dir.size() && path.startsWith(dir) && path.at(dir.size()) == QLatin1Char('/');
@@ -133,7 +136,7 @@ void SyncEngine::run(const SyncJob& job)
 DriveError SyncEngine::listRemote(Context& ctx)
 {
     ctx.remoteDirIds.insert(QString(), ctx.job.driveFolderId);
-    QStringList queue { QString() };
+    QStringList queue {QString()};
     while (!queue.isEmpty()) {
         const QString dir = queue.takeFirst();
         const auto children = ctx.client->listChildren(ctx.remoteDirIds.value(dir));
@@ -155,7 +158,8 @@ DriveError SyncEngine::listRemote(Context& ctx)
             if (ctx.remote.contains(path)) {
                 ctx.unsyncedRemote.append(path);
                 ctx.result.skipped.append(
-                    QStringLiteral("%1: several Drive items share this name; only the first is synced").arg(path));
+                    QStringLiteral("%1: several Drive items share this name; only the first is synced")
+                        .arg(path));
                 continue;
             }
             RemoteItem r;
@@ -224,7 +228,8 @@ SyncResult SyncEngine::doRun(const SyncJob& job)
         return fail(SyncResult::Failed, QStringLiteral("No sync direction selected"));
     // Never interpret a missing local folder as "everything was deleted".
     if (!QFileInfo(job.localPath).isDir())
-        return fail(SyncResult::Failed, QStringLiteral("The local folder %1 does not exist").arg(job.localPath));
+        return fail(
+            SyncResult::Failed, QStringLiteral("The local folder %1 does not exist").arg(job.localPath));
 
     ctx.client = std::make_unique<DriveClient>(m_endpoints, m_tokens, &m_cancel);
     ctx.client->setRetryBaseDelayMs(m_retryBaseMs);
@@ -265,7 +270,8 @@ SyncResult SyncEngine::doRun(const SyncJob& job)
         for (const QString& u : qAsConst(ctx.unsyncedRemote)) {
             if (isUnder(u, a.path)) {
                 plan.skipped.append(
-                    QStringLiteral("%1: Drive folder kept because it contains items that are not synced").arg(a.path));
+                    QStringLiteral("%1: Drive folder kept because it contains items that are not synced")
+                        .arg(a.path));
                 plan.actions.remove(i);
                 break;
             }
@@ -277,7 +283,7 @@ SyncResult SyncEngine::doRun(const SyncJob& job)
         if (!conflicts.isEmpty()) {
             QVector<ConflictInfo> infos;
             for (const SyncAction& c : conflicts)
-                infos.append({ c.path, c.conflict });
+                infos.append({c.path, c.conflict});
             Q_EMIT conflictsFound(job.folderId, infos);
             if (!waitForAnswer(m_haveChoices))
                 return fail(SyncResult::Cancelled, QStringLiteral("Cancelled"));
@@ -300,7 +306,8 @@ SyncResult SyncEngine::doRun(const SyncJob& job)
                 proceed = m_proceedWithDeletions;
             }
             if (!proceed)
-                return fail(SyncResult::Cancelled, QStringLiteral("Sync cancelled: deletions were not confirmed"));
+                return fail(
+                    SyncResult::Cancelled, QStringLiteral("Sync cancelled: deletions were not confirmed"));
         }
     } else {
         plan = withoutDeletionsAndConflicts(plan, &result.pendingDeletions, &result.pendingConflicts);
@@ -425,8 +432,8 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         QDir().mkpath(QFileInfo(abs).absolutePath());
         const QString tmp = abs + partialSuffix();
         emitProgress(ctx, 0, a.path);
-        const DriveError e = ctx.client->download(r.id, tmp,
-            [&](qint64 done, qint64) { emitProgress(ctx, qMin(done, a.bytes), a.path); });
+        const DriveError e = ctx.client->download(
+            r.id, tmp, [&](qint64 done, qint64) { emitProgress(ctx, qMin(done, a.bytes), a.path); });
         if (e) {
             QFile::remove(tmp);
             transferDone();
@@ -434,7 +441,8 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         }
         if (fileMd5(tmp) != r.md5) {
             QFile::remove(tmp);
-            result.errors.append(QStringLiteral("%1: downloaded content did not match the Drive checksum").arg(a.path));
+            result.errors.append(
+                QStringLiteral("%1: downloaded content did not match the Drive checksum").arg(a.path));
             transferDone();
             return true;
         }
@@ -453,7 +461,8 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         if (r.modifiedMs > 0) {
             QFile f(abs);
             if (f.open(QIODevice::ReadWrite))
-                f.setFileTime(QDateTime::fromMSecsSinceEpoch(r.modifiedMs), QFileDevice::FileModificationTime);
+                f.setFileTime(
+                    QDateTime::fromMSecsSinceEpoch(r.modifiedMs), QFileDevice::FileModificationTime);
         }
         const QFileInfo info(abs);
         StateEntry s;
@@ -507,7 +516,8 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
             // only removes empty directories: anything unsynced inside is kept
             if (QFileInfo::exists(abs) && !QDir().rmdir(abs)) {
                 ok = false;
-                result.skipped.append(QStringLiteral("%1: local folder kept because it is not empty").arg(a.path));
+                result.skipped.append(
+                    QStringLiteral("%1: local folder kept because it is not empty").arg(a.path));
             }
         } else if (QFileInfo::exists(abs)) {
             ok = QFile::moveToTrash(abs) || QFile::remove(abs);

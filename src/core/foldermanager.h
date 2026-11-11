@@ -24,7 +24,8 @@ struct FolderConfig {
 class FolderManager : public QObject {
     Q_OBJECT
 public:
-    FolderManager(KSharedConfig::Ptr config, QString stateDir, PlacesIntegration* places, QObject* parent = nullptr);
+    FolderManager(
+        KSharedConfig::Ptr config, QString stateDir, PlacesIntegration* places, QObject* parent = nullptr);
 
     QVector<FolderConfig> folders() const { return m_folders; }
     const FolderConfig* find(const QString& id) const;

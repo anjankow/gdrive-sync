@@ -22,8 +22,8 @@ private Q_SLOTS:
     {
         m_server = std::make_unique<MockGoogleServer>();
         const auto endpoints = GoogleEndpoints::forTestServer(m_server->baseUrl());
-        m_tokens = std::make_shared<TokenSource>(endpoints, QStringLiteral("cid"), QStringLiteral("secret"),
-            m_server->issueRefreshToken());
+        m_tokens = std::make_shared<TokenSource>(
+            endpoints, QStringLiteral("cid"), QStringLiteral("secret"), m_server->issueRefreshToken());
         m_client = std::make_unique<DriveClient>(endpoints, m_tokens);
         m_client->setRetryBaseDelayMs(5);
     }
@@ -45,7 +45,8 @@ private Q_SLOTS:
     {
         const QString folder = m_server->addFolder(QStringLiteral("big"));
         for (int i = 0; i < 25; ++i)
-            m_server->addFile(QStringLiteral("f%1.txt").arg(i, 2, 10, QLatin1Char('0')), folder, QByteArray(i, 'x'));
+            m_server->addFile(
+                QStringLiteral("f%1.txt").arg(i, 2, 10, QLatin1Char('0')), folder, QByteArray(i, 'x'));
         m_server->addFile(QStringLiteral("elsewhere.txt"), QStringLiteral("root"), "no");
         m_server->setMaxPageSize(10);
         const auto list = m_client->listChildren(folder);
@@ -54,7 +55,8 @@ private Q_SLOTS:
         QCOMPARE(m_server->requestCount(QStringLiteral("GET /drive/v3/files")), 3);
         QCOMPARE(list.value.at(3).name, QStringLiteral("f03.txt"));
         QCOMPARE(list.value.at(3).size, 3);
-        QCOMPARE(list.value.at(3).md5, QString::fromLatin1(QCryptographicHash::hash("xxx", QCryptographicHash::Md5).toHex()));
+        QCOMPARE(list.value.at(3).md5,
+            QString::fromLatin1(QCryptographicHash::hash("xxx", QCryptographicHash::Md5).toHex()));
         QVERIFY(list.value.at(3).modifiedMs > 0);
     }
 
@@ -117,7 +119,8 @@ private Q_SLOTS:
         QCOMPARE(updated.value.id, created.value.id);
         QCOMPARE(m_server->contentByPath(QStringLiteral("up/u.txt")), QByteArray("second, longer version"));
         // update = PATCH
-        QCOMPARE(m_server->requestCount(QStringLiteral("PATCH /upload/drive/v3/files/") + created.value.id), 1);
+        QCOMPARE(
+            m_server->requestCount(QStringLiteral("PATCH /upload/drive/v3/files/") + created.value.id), 1);
         QCOMPARE(m_server->childNames(folder).size(), 1);
     }
 
@@ -125,7 +128,8 @@ private Q_SLOTS:
     {
         const QString path = m_tmp.path() + QStringLiteral("/empty.txt");
         QVERIFY(writeFile(path, ""));
-        const auto created = m_client->upload(path, QStringLiteral("empty.txt"), QStringLiteral("root"), QString(), 0);
+        const auto created
+            = m_client->upload(path, QStringLiteral("empty.txt"), QStringLiteral("root"), QString(), 0);
         QVERIFY2(created.ok(), qPrintable(created.error.message));
         QVERIFY(m_server->existsPath(QStringLiteral("empty.txt")));
         QCOMPARE(created.value.size, 0);
@@ -139,7 +143,8 @@ private Q_SLOTS:
         const QString path = m_tmp.path() + QStringLiteral("/big.bin");
         QVERIFY(writeFile(path, content));
         m_server->interruptNextUploadAfter(262144);
-        const auto result = m_client->upload(path, QStringLiteral("big.bin"), QStringLiteral("root"), QString(), 0);
+        const auto result
+            = m_client->upload(path, QStringLiteral("big.bin"), QStringLiteral("root"), QString(), 0);
         QVERIFY2(result.ok(), qPrintable(result.error.message));
         QCOMPARE(m_server->contentByPath(QStringLiteral("big.bin")), content);
         // more than one PUT was needed: the upload was resumed, not restarted from a new session
@@ -198,9 +203,10 @@ private Q_SLOTS:
 
     void cancelStopsARunningDownload()
     {
-        const QString id = m_server->addFile(QStringLiteral("slow.bin"), QStringLiteral("root"), QByteArray(2000000, 'z'));
+        const QString id
+            = m_server->addFile(QStringLiteral("slow.bin"), QStringLiteral("root"), QByteArray(2000000, 'z'));
         m_server->setDownloadChunkDelayMs(20);
-        std::atomic_bool cancel { false };
+        std::atomic_bool cancel {false};
         DriveClient client(GoogleEndpoints::forTestServer(m_server->baseUrl()), m_tokens, &cancel);
         QTimer::singleShot(200, [&cancel]() { cancel.store(true); });
         QElapsedTimer timer;
