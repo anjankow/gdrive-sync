@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Google Drive Sync
+Comment=Sync Google Drive folders with local directories
+Exec=gdrive-sync
+Icon=folder-cloud
+Categories=Qt;KDE;Network;FileTransfer;
+StartupNotify=true

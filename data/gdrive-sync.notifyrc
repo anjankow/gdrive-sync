@@ -1,0 +1,14 @@
+[Global]
+IconName=folder-cloud
+Comment=Google Drive Sync
+Name=Google Drive Sync
+
+[Event/syncAttention]
+Name=Sync needs attention
+Comment=An automatic sync left deletions or conflicts pending
+Action=Popup
+
+[Event/syncFailed]
+Name=Sync failed
+Comment=A sync run finished with errors
+Action=Popup
