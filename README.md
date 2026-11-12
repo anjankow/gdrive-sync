@@ -6,8 +6,9 @@
 
 Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with local directories.
 
-<img width="897" height="709" alt="image" src="https://github.com/user-attachments/assets/cf4d3d3c-5a66-4a1a-8c75-30e109a68969" />
+<img width="909" height="745" alt="image" src="https://github.com/user-attachments/assets/60f3ad1d-bba2-410b-b072-4f8deb166b67" />
 
+---
 
 - C++17, Qt 5 Widgets and KDE Frameworks 5 (targets Ubuntu 24.04 / Plasma 5.27)
 - Sign-in through the web browser (OAuth 2.0 with PKCE); the sign-in data is kept in the KDE wallet
