@@ -16,10 +16,28 @@
 #include <QObject>
 #include <QPointer>
 #include <QThread>
+#include <QTimer>
 
+#include <functional>
 #include <memory>
 
 namespace gds {
+
+class AppCore;
+
+/// Keeps the secret store open while an action needs it. The store is closed
+/// again shortly after the last lease is gone.
+class SecretsLease {
+public:
+    explicit SecretsLease(AppCore* core);
+    ~SecretsLease();
+    SecretsLease(const SecretsLease&) = delete;
+    SecretsLease& operator=(const SecretsLease&) = delete;
+
+private:
+    QPointer<AppCore> m_core;
+};
+using Lease = std::shared_ptr<SecretsLease>;
 
 struct AppPaths {
     QString configFile; ///< KConfig file (no secrets are stored in it)
@@ -42,27 +60,41 @@ public:
         QObject* parent = nullptr);
     ~AppCore() override;
 
-    /// Opens the secret store and restores a persisted login. Emits initialized().
+    /// Restores a persisted login from the settings. Emits initialized().
+    /// The KDE wallet is not opened here: it is opened only for an action that
+    /// needs it (sync, Drive folder browser, sign-in/out, Google API client)
+    /// and closed again afterwards.
     void initialize();
     /// Waits until the settings saved so far are written to disk (they are written in the background).
     void flushSettings() { m_configWriter.flush(); }
     bool isInitialized() const { return m_initialized; }
 
+    /// Opens the secret store and calls \p ready with a lease that keeps it open
+    /// (or with no lease and the reason when it could not be opened). \p ready
+    /// is not called when \p context is gone by then.
+    void requestSecrets(
+        QObject* context, std::function<void(const Lease& lease, const QString& error)> ready);
+    /// How long the store stays open after the last lease is gone.
+    void setSecretsLingerMs(int ms) { m_releaseTimer.setInterval(ms); }
+
     // OAuth client of the user's own Google Cloud project (kept in the secret store)
+    /// Whether a client was saved (from the settings; no wallet access).
     bool hasClientCredentials() const;
+    /// Read from the secret store: only valid while a lease is held.
     QString clientId() const;
     QString clientSecret() const;
-    /// Stores the client in the wallet. On failure nothing is changed (the
-    /// previous client stays in effect) and \p error says what happened and why.
+    /// Stores the client in the wallet (needs a lease). On failure nothing is
+    /// changed (the previous client stays in effect) and \p error says what
+    /// happened and why.
     bool setClientCredentials(const QString& clientId, const QString& clientSecret, QString* error = nullptr);
 
     // account
-    bool isLoggedIn() const { return m_tokens != nullptr; }
+    bool isLoggedIn() const { return !accountEmail().isEmpty(); }
     QString accountEmail() const;
     QString accountName() const;
     /// URL of the profile picture of the signed-in user; may be empty.
     QString accountPhotoUrl() const;
-    bool isLoginInProgress() const { return m_flow != nullptr; }
+    bool isLoginInProgress() const { return m_flow != nullptr || m_loginPending; }
     void login();
     void cancelLogin();
     void logout();
@@ -100,7 +132,6 @@ public:
     bool setLogDirectory(const QString& directory, QString* error = nullptr);
 
     void setRetryBaseDelayMs(int ms) { m_retryBaseMs = ms; }
-    std::shared_ptr<TokenSource> tokenSource() const { return m_tokens; }
 
 Q_SIGNALS:
     void initialized(bool ok, const QString& error);
@@ -122,10 +153,17 @@ Q_SIGNALS:
     void autoSyncChanged(bool ok, const QString& error);
 
 private:
+    friend class SecretsLease;
+    void releaseSecrets();
+    void closeSecretsIfUnused();
     void onStoreOpened(bool ok);
+    /// Builds the token source from the wallet (a lease must be held).
+    bool ensureTokens();
+    void failQueuedJobs(SyncResult::Status status, const QString& message);
     void setupLogging();
     QString folderLabel(const QString& folderId) const;
     void onTokens(const OAuthTokens& tokens);
+    void revokeAndStopTimer(const QString& refreshToken);
     void storeAccountInfo(const AccountInfo& info);
     void refreshAccountInfo();
     void createEngine();
@@ -147,7 +185,22 @@ private:
     bool m_initialized = false;
 
     QPointer<OAuthFlow> m_flow;
+    bool m_loginPending = false; ///< sign-in waits for the wallet
+    Lease m_loginLease;
+    /// Only while a lease is held: the secrets are not kept in memory otherwise.
     std::shared_ptr<TokenSource> m_tokens;
+    bool m_accountRefreshed = false;
+
+    struct SecretsRequest {
+        QPointer<QObject> context;
+        Lease lease;
+        std::function<void(const Lease&, const QString&)> ready;
+    };
+    QVector<SecretsRequest> m_secretRequests;
+    int m_secretUsers = 0;
+    bool m_secretsOpening = false;
+    bool m_destroying = false;
+    QTimer m_releaseTimer;
 
     QThread m_thread;
     SyncEngine* m_engine = nullptr;
@@ -156,6 +209,8 @@ private:
     bool m_syncing = false;
     bool m_batchInteractive = true;
     QString m_currentFolder;
+    int m_batchId = 0;
+    Lease m_syncLease;
     /// Prevents the GUI and an automatic run from syncing at the same time.
     std::unique_ptr<QLockFile> m_lock;
     int m_retryBaseMs = 500;

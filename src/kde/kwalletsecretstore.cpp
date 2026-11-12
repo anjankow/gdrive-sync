@@ -19,8 +19,8 @@ namespace {
 
     QString closedReason()
     {
-        return QStringLiteral("the KDE wallet was closed or locked after the application opened it; "
-                              "unlock it when the wallet asks for the password and try again");
+        return QStringLiteral("the KDE wallet was closed or locked while the application was using it; "
+                              "try again and unlock it when the wallet asks for the password");
     }
 }
 
@@ -44,13 +44,9 @@ void KWalletSecretStore::open()
         QMetaObject::invokeMethod(this, [this]() { Q_EMIT opened(true); }, Qt::QueuedConnection);
         return;
     }
-    requestOpen();
-}
-
-void KWalletSecretStore::requestOpen()
-{
     if (m_opening)
-        return;
+        return; // opened() follows
+    dropWallet();
     // Asynchronous: the password prompt of the wallet never blocks our event loop.
     m_wallet.reset(KWallet::Wallet::openWallet(
         KWallet::Wallet::NetworkWallet(), m_windowId, KWallet::Wallet::Asynchronous));
@@ -63,6 +59,21 @@ void KWalletSecretStore::requestOpen()
     connect(m_wallet.get(), &KWallet::Wallet::walletClosed, this, &KWalletSecretStore::onClosed);
 }
 
+void KWalletSecretStore::close()
+{
+    m_opening = false;
+    dropWallet();
+}
+
+void KWalletSecretStore::dropWallet()
+{
+    m_cache.clear();
+    if (m_wallet) {
+        m_wallet->disconnect(this);
+        m_wallet.release()->deleteLater(); // we may be inside one of its signals
+    }
+}
+
 void KWalletSecretStore::onOpened(bool ok)
 {
     m_opening = false;
@@ -72,49 +83,29 @@ void KWalletSecretStore::onOpened(bool ok)
         ok = ok && m_wallet->setFolder(folderName());
     }
     if (!ok) {
-        if (m_wallet)
-            m_wallet.release()->deleteLater(); // we may be inside one of its signals
-        if (m_everOpened)
-            logError(QStringLiteral(
-                "The KDE wallet could not be opened again; changes to the sign-in data cannot be saved"));
-        else
-            Q_EMIT opened(false);
+        dropWallet();
+        Q_EMIT opened(false);
         return;
     }
-
-    if (!m_everOpened) {
-        m_everOpened = true;
-        const QStringList keys = knownKeys();
-        for (const QString& key : keys) {
-            QString value;
-            if (m_wallet->hasEntry(key))
-                m_wallet->readPassword(key, value);
-            m_cache.insert(key, value);
-        }
-        Q_EMIT opened(true);
-        return;
+    const QStringList keys = knownKeys();
+    for (const QString& key : keys) {
+        QString value;
+        if (m_wallet->hasEntry(key))
+            m_wallet->readPassword(key, value);
+        m_cache.insert(key, value);
     }
-
-    // opened again after the wallet service had closed it
-    logInfo(QStringLiteral("The KDE wallet is open again"));
     const QSet<QString> pending = m_pendingRemovals;
     m_pendingRemovals.clear();
     for (const QString& key : pending)
         remove(key);
+    Q_EMIT opened(true);
 }
 
 void KWalletSecretStore::onClosed()
 {
-    logWarn(QStringLiteral(
-        "The KDE wallet was closed while the application is running; asking to open it again"));
-    // the Wallet object emitted this signal: replace it only after returning
-    QMetaObject::invokeMethod(
-        this,
-        [this]() {
-            if (!isOpen())
-                requestOpen();
-        },
-        Qt::QueuedConnection);
+    // Nothing is reopened here: the next action that needs the wallet opens it.
+    logDebug(QStringLiteral("The KDE wallet was closed by the wallet service"));
+    QMetaObject::invokeMethod(this, [this]() { dropWallet(); }, Qt::QueuedConnection);
 }
 
 bool KWalletSecretStore::isOpen() const
@@ -124,16 +115,13 @@ bool KWalletSecretStore::isOpen() const
 
 QString KWalletSecretStore::read(const QString& key) const
 {
-    // from memory: still correct after the wallet service closed the wallet
-    return m_cache.value(key);
+    return isOpen() ? m_cache.value(key) : QString();
 }
 
 bool KWalletSecretStore::write(const QString& key, const QString& value)
 {
     if (!isOpen()) {
-        m_lastError = m_everOpened ? closedReason() : QStringLiteral("the KDE wallet is not open");
-        if (m_everOpened)
-            requestOpen();
+        m_lastError = m_wallet ? closedReason() : QStringLiteral("the KDE wallet is not open");
         return false;
     }
     const int rc = m_wallet->writePassword(key, value);
@@ -153,14 +141,10 @@ bool KWalletSecretStore::write(const QString& key, const QString& value)
 
 bool KWalletSecretStore::remove(const QString& key)
 {
-    // the value is gone for the application in any case
     m_cache.insert(key, QString());
     if (!isOpen()) {
-        m_lastError = m_everOpened ? closedReason() : QStringLiteral("the KDE wallet is not open");
-        if (m_everOpened) {
-            m_pendingRemovals.insert(key); // repeated as soon as the wallet is open again
-            requestOpen();
-        }
+        m_lastError = m_wallet ? closedReason() : QStringLiteral("the KDE wallet is not open");
+        m_pendingRemovals.insert(key); // repeated the next time the wallet is open
         return false;
     }
     if (m_wallet->hasEntry(key) && m_wallet->removeEntry(key) != 0) {

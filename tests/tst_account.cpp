@@ -28,8 +28,7 @@ class TestAccount : public QObject {
     {
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(
-            f.core->setClientCredentials(QStringLiteral("my-client-id"), QStringLiteral("my-client-secret")));
+        QVERIFY(f.setClient(QStringLiteral("my-client-id"), QStringLiteral("my-client-secret")));
     }
 
     /// True when \p needle appears in any file below \p dir.
@@ -62,7 +61,7 @@ private Q_SLOTS:
         QVERIFY(f.initialize());
         QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
         f.core->login();
-        QCOMPARE(failed.count(), 1);
+        QTRY_COMPARE(failed.count(), 1);
         QVERIFY(!f.core->isLoggedIn());
         QVERIFY(f.browser.opened.isEmpty());
     }
@@ -121,8 +120,8 @@ private Q_SLOTS:
         QVERIFY(login(f));
         f.core->setDirection(SyncDirection::TwoWay);
         const QString refresh = f.server.issuedRefreshTokens().last();
-        QCOMPARE(f.secrets.read(SecretKeys::refreshToken()), refresh);
-        QCOMPARE(f.secrets.read(SecretKeys::clientSecret()), QStringLiteral("my-client-secret"));
+        QCOMPARE(f.secrets.stored(SecretKeys::refreshToken()), refresh);
+        QCOMPARE(f.secrets.stored(SecretKeys::clientSecret()), QStringLiteral("my-client-secret"));
         // nothing secret in the config or state files
         f.core->flushSettings();
         QVERIFY(QFile::exists(f.paths().configFile));
@@ -141,7 +140,7 @@ private Q_SLOTS:
         QVERIFY(failed.wait(10000));
         QVERIFY(failed.first().at(0).toString().contains(QStringLiteral("access_denied")));
         QVERIFY(!f.core->isLoggedIn());
-        QVERIFY(f.secrets.read(SecretKeys::refreshToken()).isEmpty());
+        QVERIFY(f.secrets.stored(SecretKeys::refreshToken()).isEmpty());
     }
 
     void forgedRedirectWithWrongStateIsRejected()
@@ -228,7 +227,7 @@ private Q_SLOTS:
         f.core->setDirection(SyncDirection::TwoWay);
         const QString folder = f.server.addFolder(QStringLiteral("Docs"));
         QVERIFY(!f.mount(folder, QStringLiteral("Docs")).isEmpty());
-        const QString refresh = f.secrets.read(SecretKeys::refreshToken());
+        const QString refresh = f.secrets.stored(SecretKeys::refreshToken());
         QVERIFY(!refresh.isEmpty());
 
         QSignalSpy loggedOut(f.core.get(), &AppCore::loggedOut);
@@ -239,10 +238,11 @@ private Q_SLOTS:
         QCOMPARE(f.core->direction(), SyncDirection::Unset);
         QVERIFY(f.core->folders()->folders().isEmpty());
         QVERIFY(f.places.places.isEmpty());
-        QVERIFY(f.secrets.read(SecretKeys::refreshToken()).isEmpty());
+        QTRY_VERIFY(f.secrets.stored(SecretKeys::refreshToken()).isEmpty());
         QTRY_VERIFY(f.server.revokedTokens().contains(refresh));
         // the OAuth client configuration is not account data and is kept
-        QCOMPARE(f.core->clientId(), QStringLiteral("my-client-id"));
+        QCOMPARE(f.secrets.stored(SecretKeys::clientId()), QStringLiteral("my-client-id"));
+        QVERIFY(f.core->hasClientCredentials());
 
         // still logged out after a restart
         f.createCore();
@@ -257,14 +257,14 @@ private Q_SLOTS:
         f.server.setAccountEmail(QStringLiteral("alice@example.com"));
         QVERIFY(login(f));
         f.core->setDirection(SyncDirection::LocalToDrive);
-        const QString firstToken = f.secrets.read(SecretKeys::refreshToken());
+        const QString firstToken = f.secrets.stored(SecretKeys::refreshToken());
         f.core->logout();
 
         f.server.setAccountEmail(QStringLiteral("bob@example.com"));
         QVERIFY(login(f));
         QVERIFY(f.core->isLoggedIn());
         QCOMPARE(f.core->accountEmail(), QStringLiteral("bob@example.com"));
-        QVERIFY(f.secrets.read(SecretKeys::refreshToken()) != firstToken);
+        QVERIFY(f.secrets.stored(SecretKeys::refreshToken()) != firstToken);
         // the direction is asked again for the new login session
         QCOMPARE(f.core->direction(), SyncDirection::Unset);
         // the consent/account chooser is always requested so another account can be picked
@@ -273,18 +273,18 @@ private Q_SLOTS:
                     .contains(QStringLiteral("select_account")));
     }
 
-    void unavailableWalletIsReported()
+    void unavailableWalletIsReportedWhenNeeded()
     {
         Fixture f;
         f.secrets.failOpen = true;
         f.createCore();
-        QSignalSpy init(f.core.get(), &AppCore::initialized);
-        f.core->initialize();
-        QVERIFY(init.count() > 0 || init.wait());
-        QCOMPARE(init.first().at(0).toBool(), false);
+        QVERIFY(f.initialize()); // starting needs no wallet
+        QCOMPARE(f.secrets.openCount, 0);
         QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
         f.core->login();
-        QCOMPARE(failed.count(), 1);
+        QTRY_COMPARE(failed.count(), 1);
+        QVERIFY(failed.first().at(0).toString().contains(QStringLiteral("KDE wallet could not be opened")));
+        QVERIFY(!f.core->isLoginInProgress());
     }
 };
 

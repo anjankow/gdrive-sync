@@ -61,6 +61,10 @@ public:
     /// Whether the account has a profile picture (served at /photo).
     void setAccountHasPhoto(bool hasPhoto);
     static QByteArray photoPng();
+    QString accountEmail() const { return m_email; }
+    QString accountName() const { return m_name; }
+    /// Profile picture URL as Drive reports it; empty without a picture.
+    QString accountPhotoLink() const { return m_hasPhoto ? baseUrl() + QStringLiteral("/photo") : QString(); }
     void setDenyAuthorization(bool deny);
     void expireAccessTokens();
     void invalidateRefreshTokens();

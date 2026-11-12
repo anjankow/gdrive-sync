@@ -44,6 +44,7 @@ private:
     void editCredentials();
     void askDirection();
     void bringToFront();
+    void showCredentialsDialog(const gds::Lease& lease);
     void addFolder();
     void unmountSelected();
     void syncSelected();

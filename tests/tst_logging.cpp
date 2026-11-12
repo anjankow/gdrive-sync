@@ -67,7 +67,7 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("cid"), QStringLiteral("very-secret-value")));
+        QVERIFY(f.setClient(QStringLiteral("cid"), QStringLiteral("very-secret-value")));
         f.server.setAccountEmail(QStringLiteral("alice@example.com"));
         QVERIFY(login(f));
         f.core->setDirection(SyncDirection::DriveToLocal);
@@ -160,7 +160,7 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("cid"), QString()));
+        QVERIFY(f.setClient(QStringLiteral("cid"), QString()));
         f.server.setDenyAuthorization(true);
         QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
         f.core->login();
@@ -179,12 +179,13 @@ private Q_SLOTS:
     void unexpectedApplicationErrorsAreErrors()
     {
         {
-            Fixture f; // the wallet cannot be opened
+            Fixture f; // the wallet cannot be opened when a sync needs it
             f.secrets.failOpen = true;
-            f.createCore();
-            QSignalSpy init(f.core.get(), &AppCore::initialized);
-            f.core->initialize();
-            QVERIFY(init.count() > 0 || init.wait());
+            QVERIFY(f.startLoggedIn());
+            const QString id = f.mount(f.server.addFolder(QStringLiteral("Docs")), QStringLiteral("Docs"));
+            QSignalSpy finished(f.core.get(), &AppCore::syncFinished);
+            QVERIFY(f.core->syncFolder(id));
+            QVERIFY(finished.wait(5000));
             QVERIFY(anyContains(
                 f.logLines(QStringLiteral("ERROR")), QStringLiteral("KDE wallet could not be opened")));
         }
@@ -205,15 +206,14 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("old-id"), QStringLiteral("old-secret")));
+        QVERIFY(f.setClient(QStringLiteral("old-id"), QStringLiteral("old-secret")));
 
         // the wallet gets closed behind the application's back
         f.secrets.failWrites = true;
         f.secrets.failReason
             = QStringLiteral("the KDE wallet was closed or locked after the application opened it");
         QString error;
-        QVERIFY(
-            !f.core->setClientCredentials(QStringLiteral("new-id"), QStringLiteral("new-secret"), &error));
+        QVERIFY(!f.setClient(QStringLiteral("new-id"), QStringLiteral("new-secret"), &error));
         // what happened, why, and what the outcome is
         QVERIFY(error.contains(QStringLiteral("could not be stored in the KDE wallet")));
         QVERIFY(error.contains(QStringLiteral("the KDE wallet was closed or locked")));
@@ -232,11 +232,10 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("old-id"), QStringLiteral("old-secret")));
+        QVERIFY(f.setClient(QStringLiteral("old-id"), QStringLiteral("old-secret")));
         f.secrets.failWriteOfKey = SecretKeys::clientSecret(); // the ID is written, the secret is not
         QString error;
-        QVERIFY(
-            !f.core->setClientCredentials(QStringLiteral("new-id"), QStringLiteral("new-secret"), &error));
+        QVERIFY(!f.setClient(QStringLiteral("new-id"), QStringLiteral("new-secret"), &error));
         QCOMPARE(f.core->clientId(), QStringLiteral("old-id")); // no new ID with the old secret
         QCOMPARE(f.core->clientSecret(), QStringLiteral("old-secret"));
     }
@@ -248,7 +247,7 @@ private Q_SLOTS:
         QVERIFY(f.initialize());
         f.secrets.failWrites = true;
         QString error;
-        QVERIFY(!f.core->setClientCredentials(QStringLiteral("id"), QStringLiteral("secret"), &error));
+        QVERIFY(!f.setClient(QStringLiteral("id"), QStringLiteral("secret"), &error));
         QVERIFY(error.contains(QStringLiteral("signing in stays unavailable until the client is saved")));
         QVERIFY(!f.core->hasClientCredentials());
     }
@@ -258,7 +257,7 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("cid"), QString()));
+        QVERIFY(f.setClient(QStringLiteral("cid"), QString()));
         f.secrets.failWriteOfKey = SecretKeys::refreshToken();
         f.secrets.failReason = QStringLiteral("the KDE wallet was closed");
         QSignalSpy failed(f.core.get(), &AppCore::loginFailed);

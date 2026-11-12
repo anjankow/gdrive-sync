@@ -15,6 +15,8 @@
 #include <QThreadPool>
 #include <QtConcurrent>
 
+#include <utility>
+
 namespace gds {
 
 namespace {
@@ -30,6 +32,11 @@ namespace {
         });
         watcher->setFuture(QtConcurrent::run(work));
     }
+}
+
+static QString missingSignIn()
+{
+    return QStringLiteral("The sign-in data is missing from the KDE wallet. Sign out and sign in again.");
 }
 
 AppPaths AppPaths::defaults()
@@ -71,15 +78,23 @@ AppCore::AppCore(GoogleEndpoints endpoints, SecretStore* secrets, PlacesIntegrat
     m_folders = new FolderManager(m_config, &m_configWriter, m_paths.stateDir, places, this);
     setupLogging();
     connect(m_secrets, &SecretStore::opened, this, &AppCore::onStoreOpened);
+    m_releaseTimer.setSingleShot(true);
+    m_releaseTimer.setInterval(30000); // covers several clicks in the folder browser
+    connect(&m_releaseTimer, &QTimer::timeout, this, &AppCore::closeSecretsIfUnused);
     m_thread.setObjectName(QStringLiteral("gdrive-sync-worker"));
     m_thread.start();
 }
 
 AppCore::~AppCore()
 {
+    m_destroying = true;
     if (m_engine)
         m_engine->requestCancel();
     destroyEngine();
+    m_syncLease.reset();
+    m_loginLease.reset();
+    m_secretRequests.clear();
+    m_secrets->close();
     m_thread.quit();
     m_thread.wait();
     // background tasks reference members of this object
@@ -182,33 +197,104 @@ void AppCore::setupLogging()
 
 void AppCore::initialize()
 {
-    m_secrets->open();
+    // The sign-in state comes from the settings: no wallet access at start.
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+            m_initialized = true;
+            Q_EMIT initialized(true, QString());
+            Q_EMIT accountChanged();
+        },
+        Qt::QueuedConnection);
+}
+
+SecretsLease::SecretsLease(AppCore* core)
+    : m_core(core)
+{
+}
+
+SecretsLease::~SecretsLease()
+{
+    if (m_core)
+        m_core->releaseSecrets();
+}
+
+void AppCore::requestSecrets(QObject* context, std::function<void(const Lease&, const QString&)> ready)
+{
+    ++m_secretUsers;
+    m_releaseTimer.stop();
+    m_secretRequests.append(
+        {QPointer<QObject>(context), std::make_shared<SecretsLease>(this), std::move(ready)});
+    if (m_secretsOpening)
+        return; // answered by onStoreOpened()
+    m_secretsOpening = true;
+    m_secrets->open(); // emits opened() also when it is open already
 }
 
 void AppCore::onStoreOpened(bool ok)
 {
-    if (m_initialized)
-        return;
-    if (!ok) {
-        Q_EMIT initialized(false,
-            QStringLiteral(
-                "The KDE wallet could not be opened. It is required to store the sign-in data securely."));
-        return;
+    m_secretsOpening = false;
+    const QString error = ok
+        ? QString()
+        : QStringLiteral("The KDE wallet could not be opened. It is required to read the "
+                         "sign-in data; unlock the wallet when it asks for the password.");
+    if (ok && m_config->group("Wallet").readEntry("removeSignIn", false)) {
+        // the sign-out could not remove the sign-in data from the wallet back then
+        if (isLoggedIn() || m_secrets->remove(SecretKeys::refreshToken())) {
+            m_config->group("Wallet").deleteEntry("removeSignIn");
+            m_configWriter.save();
+            if (!isLoggedIn())
+                logInfo(
+                    QStringLiteral("Removed the sign-in data of the earlier sign-out from the KDE wallet"));
+        }
     }
-    m_initialized = true;
+    if (!ok)
+        gds::logError(error);
+    const QVector<SecretsRequest> requests = std::move(m_secretRequests);
+    m_secretRequests.clear();
+    for (const SecretsRequest& request : requests) {
+        if (request.context)
+            request.ready(ok ? request.lease : Lease(), error);
+    }
+    // leases that nobody kept are released when `requests` goes out of scope
+}
+
+void AppCore::releaseSecrets()
+{
+    if (m_destroying)
+        return;
+    if (--m_secretUsers == 0)
+        m_releaseTimer.start();
+}
+
+void AppCore::closeSecretsIfUnused()
+{
+    if (m_secretUsers > 0 || m_secretsOpening)
+        return;
+    m_tokens.reset(); // the secrets are not kept in memory while nothing needs them
+    if (m_secrets->isOpen())
+        logDebug(QStringLiteral("KDE wallet no longer needed; closed it"));
+    m_secrets->close();
+}
+
+bool AppCore::ensureTokens()
+{
+    if (m_tokens)
+        return true;
     const QString refresh = m_secrets->read(SecretKeys::refreshToken());
-    if (!refresh.isEmpty() && hasClientCredentials()) {
-        m_tokens = std::make_shared<TokenSource>(m_endpoints, clientId(), clientSecret(), refresh);
-        createEngine();
-        refreshAccountInfo();
+    if (refresh.isEmpty() || clientId().isEmpty())
+        return false;
+    m_tokens = std::make_shared<TokenSource>(m_endpoints, clientId(), clientSecret(), refresh);
+    if (!m_accountRefreshed) {
+        m_accountRefreshed = true;
+        refreshAccountInfo(); // name and picture may have changed since the sign-in
     }
-    Q_EMIT initialized(true, QString());
-    Q_EMIT accountChanged();
+    return true;
 }
 
 bool AppCore::hasClientCredentials() const
 {
-    return !clientId().isEmpty();
+    return m_config->group("Client").readEntry("configured", false) || isLoggedIn();
 }
 
 QString AppCore::clientId() const
@@ -235,6 +321,9 @@ bool AppCore::setClientCredentials(const QString& clientId, const QString& clien
         m_secrets->write(SecretKeys::clientId(), previousId);
     }
     if (ok) {
+        m_tokens.reset(); // built again with the new client
+        m_config->group("Client").writeEntry("configured", true);
+        m_configWriter.save();
         logInfo(QStringLiteral("Google API client changed"));
         return true;
     }
@@ -319,37 +408,52 @@ void AppCore::setDirection(SyncDirection direction)
 
 void AppCore::login()
 {
-    if (m_flow)
+    if (isLoginInProgress())
         return;
-    if (!m_initialized) {
-        Q_EMIT loginFailed(QStringLiteral("The KDE wallet is not available."));
-        return;
-    }
-    if (!hasClientCredentials()) {
-        Q_EMIT loginFailed(QStringLiteral("Enter the OAuth client ID of your Google Cloud project first."));
-        return;
-    }
-    logInfo(QStringLiteral("Sign-in started in the web browser"));
-    m_flow = new OAuthFlow(m_endpoints, clientId(), clientSecret(), m_browser, this);
-    connect(m_flow, &OAuthFlow::succeeded, this, &AppCore::onTokens);
-    connect(m_flow, &OAuthFlow::failed, this, [this](const QString& error) {
-        m_flow->deleteLater();
-        m_flow = nullptr;
-        Q_EMIT loginFailed(error);
+    m_loginPending = true;
+    // the client is read from the wallet, and the sign-in is stored there
+    requestSecrets(this, [this](const Lease& lease, const QString& error) {
+        if (!m_loginPending)
+            return; // cancelled meanwhile
+        m_loginPending = false;
+        if (!lease) {
+            Q_EMIT loginFailed(error);
+            return;
+        }
+        if (clientId().isEmpty()) {
+            Q_EMIT loginFailed(
+                QStringLiteral("Enter the OAuth client ID of your Google Cloud project first."));
+            return;
+        }
+        logInfo(QStringLiteral("Sign-in started in the web browser"));
+        m_loginLease = lease;
+        m_flow = new OAuthFlow(m_endpoints, clientId(), clientSecret(), m_browser, this);
+        connect(m_flow, &OAuthFlow::succeeded, this, &AppCore::onTokens);
+        connect(m_flow, &OAuthFlow::failed, this, [this](const QString& reason) {
+            m_flow->deleteLater();
+            m_flow = nullptr;
+            m_loginLease.reset();
+            Q_EMIT loginFailed(reason);
+        });
+        m_flow->start();
     });
-    m_flow->start();
 }
 
 void AppCore::cancelLogin()
 {
-    if (m_flow)
+    if (m_flow) {
         m_flow->cancel();
+    } else if (m_loginPending) {
+        m_loginPending = false;
+        Q_EMIT loginFailed(QStringLiteral("Sign-in cancelled"));
+    }
 }
 
 void AppCore::onTokens(const OAuthTokens& tokens)
 {
     m_flow->deleteLater();
     m_flow = nullptr;
+    const Lease lease = std::exchange(m_loginLease, Lease()); // held until the sign-in is stored
 
     auto source = std::make_shared<TokenSource>(m_endpoints, clientId(), clientSecret(), tokens.refreshToken);
     source->setAccessToken(tokens.accessToken, tokens.expiresIn);
@@ -361,7 +465,7 @@ void AppCore::onTokens(const OAuthTokens& tokens)
             DriveClient client(endpoints, source);
             return client.about();
         },
-        [this, source](const DriveResult<AccountInfo>& about) {
+        [this, source, lease](const DriveResult<AccountInfo>& about) {
             if (!about.ok()) {
                 Q_EMIT loginFailed(
                     QStringLiteral("Could not read the Google account: %1").arg(about.error.message));
@@ -382,11 +486,10 @@ void AppCore::onTokens(const OAuthTokens& tokens)
                 m_folders->clear();
                 m_config->group("Account").deleteEntry("direction");
             }
-            if (m_engine)
-                m_engine->requestCancel();
-            destroyEngine();
             m_tokens = source;
-            createEngine();
+            m_accountRefreshed = true;
+            m_config->group("Client").writeEntry("configured", true);
+            m_config->group("Wallet").deleteEntry("removeSignIn");
             storeAccountInfo(about.value);
             Q_EMIT accountChanged();
             Q_EMIT loginSucceeded();
@@ -395,28 +498,44 @@ void AppCore::onTokens(const OAuthTokens& tokens)
 
 void AppCore::logout()
 {
-    if (m_flow)
-        m_flow->cancel();
-    if (m_engine)
-        m_engine->requestCancel();
-    destroyEngine();
-    m_queue.clear();
+    cancelLogin();
+    if (m_syncing) {
+        if (m_engine)
+            m_engine->requestCancel();
+        m_queue.clear();
+        finishBatch();
+    }
 
     logInfo(QStringLiteral("Signed out of %1; the folder list and the automatic sync were removed")
                 .arg(accountEmail()));
-    const QString refresh = m_secrets->read(SecretKeys::refreshToken());
-    if (!m_secrets->remove(SecretKeys::refreshToken())) {
-        gds::logError(
-            QStringLiteral("The sign-in data could not be removed from the KDE wallet: %1. You are signed "
-                           "out; the removal is repeated when the wallet is open again.")
-                .arg(m_secrets->lastError()));
-    }
     m_tokens.reset();
     m_folders->clear();
     m_config->deleteGroup("Account");
     m_configWriter.save();
 
-    // Revoke the grant at Google and remove the timer without blocking the GUI.
+    // Remove the sign-in from the wallet, revoke it at Google and remove the
+    // timer, without blocking the GUI.
+    requestSecrets(this, [this](const Lease& lease, const QString& error) {
+        QString refresh;
+        if (lease)
+            refresh = m_secrets->read(SecretKeys::refreshToken());
+        if (!lease || !m_secrets->remove(SecretKeys::refreshToken())) {
+            gds::logError(QStringLiteral(
+                "The sign-in data could not be removed from the KDE wallet: %1. You are signed "
+                "out; the removal is repeated the next time the wallet is opened.")
+                              .arg(lease ? m_secrets->lastError() : error));
+            m_config->group("Wallet").writeEntry("removeSignIn", true);
+            m_configWriter.save();
+        }
+        revokeAndStopTimer(refresh);
+    });
+
+    Q_EMIT accountChanged();
+    Q_EMIT loggedOut();
+}
+
+void AppCore::revokeAndStopTimer(const QString& refresh)
+{
     const GoogleEndpoints endpoints = m_endpoints;
     Scheduler scheduler = m_scheduler;
     runInBackground<bool>(
@@ -435,9 +554,6 @@ void AppCore::logout()
             return !scheduler.isEnabled() || scheduler.disable();
         },
         [this](bool) { Q_EMIT autoSyncChanged(true, QString()); });
-
-    Q_EMIT accountChanged();
-    Q_EMIT loggedOut();
 }
 
 void AppCore::createEngine()
@@ -458,10 +574,6 @@ void AppCore::destroyEngine()
     m_engine->disconnect(this);
     m_engine->deleteLater(); // runs in the worker thread after the current job returned
     m_engine = nullptr;
-    if (m_syncing) {
-        m_queue.clear();
-        finishBatch();
-    }
 }
 
 void AppCore::finishBatch()
@@ -470,28 +582,57 @@ void AppCore::finishBatch()
     m_currentFolder.clear();
     if (m_lock)
         m_lock->unlock();
+    destroyEngine();
+    m_syncLease.reset(); // the wallet is not needed any more
     Q_EMIT syncFinished(m_results);
+}
+
+void AppCore::failQueuedJobs(SyncResult::Status status, const QString& message)
+{
+    const QVector<SyncJob> jobs = std::exchange(m_queue, {});
+    for (const SyncJob& job : jobs) {
+        SyncResult r;
+        r.status = status;
+        r.folderId = job.folderId;
+        r.errorMessage = message;
+        m_results.append(r);
+        m_folders->recordSync(r.folderId, formatResult(r));
+        Q_EMIT folderSyncFinished(r);
+    }
+    finishBatch();
 }
 
 void AppCore::listDriveFolders(const QString& parentId)
 {
-    if (!m_tokens) {
+    if (!isLoggedIn()) {
         Q_EMIT driveFoldersListed(parentId, {}, QStringLiteral("Not signed in"));
         return;
     }
-    const GoogleEndpoints endpoints = m_endpoints;
-    const auto tokens = m_tokens;
-    runInBackground<DriveResult<QVector<DriveItem>>>(
-        this,
-        [endpoints, tokens, parentId]() {
-            DriveClient client(endpoints, tokens);
-            return client.listChildren(parentId, true);
-        },
-        [this, parentId, tokens](const DriveResult<QVector<DriveItem>>& result) {
-            Q_EMIT driveFoldersListed(parentId, result.value, result.ok() ? QString() : result.error.message);
-            if (tokens->authorizationLost())
-                Q_EMIT authorizationLost();
-        });
+    requestSecrets(this, [this, parentId](const Lease& lease, const QString& error) {
+        if (!lease) {
+            Q_EMIT driveFoldersListed(parentId, {}, error);
+            return;
+        }
+        if (!ensureTokens()) {
+            Q_EMIT driveFoldersListed(parentId, {}, missingSignIn());
+            Q_EMIT authorizationLost();
+            return;
+        }
+        const GoogleEndpoints endpoints = m_endpoints;
+        const auto tokens = m_tokens;
+        runInBackground<DriveResult<QVector<DriveItem>>>(
+            this,
+            [endpoints, tokens, parentId]() {
+                DriveClient client(endpoints, tokens);
+                return client.listChildren(parentId, true);
+            },
+            [this, parentId, tokens, lease](const DriveResult<QVector<DriveItem>>& result) {
+                Q_EMIT driveFoldersListed(
+                    parentId, result.value, result.ok() ? QString() : result.error.message);
+                if (tokens->authorizationLost())
+                    Q_EMIT authorizationLost();
+            });
+    });
 }
 
 bool AppCore::unmountFolder(const QString& id, QString* error)
@@ -523,7 +664,7 @@ bool AppCore::syncAll(bool interactive)
 
 bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
 {
-    if (m_syncing || !m_engine || folders.isEmpty() || direction() == SyncDirection::Unset)
+    if (m_syncing || !isLoggedIn() || folders.isEmpty() || direction() == SyncDirection::Unset)
         return false;
     QDir().mkpath(m_paths.stateDir);
     if (!m_lock) {
@@ -535,7 +676,6 @@ bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
         logWarn(QStringLiteral("Sync not started: another gdrive-sync process is syncing"));
         return false;
     }
-    m_engine->resetCancel();
     m_results.clear();
     m_queue.clear();
     for (const FolderConfig& f : folders) {
@@ -551,7 +691,24 @@ bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
     m_syncing = true;
     m_batchInteractive = interactive;
     Q_EMIT syncStarted();
-    startNextJob();
+    // The sign-in is read from the wallet for the time of the sync.
+    const int batch = ++m_batchId;
+    requestSecrets(this, [this, batch](const Lease& lease, const QString& error) {
+        if (!m_syncing || batch != m_batchId)
+            return; // cancelled meanwhile
+        if (!lease) {
+            failQueuedJobs(SyncResult::Failed, error);
+            return;
+        }
+        if (!ensureTokens()) {
+            failQueuedJobs(SyncResult::AuthRequired, missingSignIn());
+            Q_EMIT authorizationLost();
+            return;
+        }
+        m_syncLease = lease;
+        createEngine();
+        startNextJob();
+    });
     return true;
 }
 
@@ -603,10 +760,13 @@ void AppCore::onEngineFinished(const SyncResult& result)
 
 void AppCore::cancelSync()
 {
-    if (m_engine && m_syncing) {
-        logDebug(QStringLiteral("Sync cancel requested"));
+    if (!m_syncing)
+        return;
+    logDebug(QStringLiteral("Sync cancel requested"));
+    if (m_engine)
         m_engine->requestCancel();
-    }
+    else
+        failQueuedJobs(SyncResult::Cancelled, QStringLiteral("Cancelled")); // still waiting for the wallet
 }
 
 void AppCore::resolveConflicts(const QHash<QString, ConflictChoice>& choices)
