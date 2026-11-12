@@ -3,6 +3,6 @@ Type=Application
 Name=Google Drive Sync
 Comment=Sync Google Drive folders with local directories
 Exec=gdrive-sync
-Icon=folder-cloud
+Icon=io.github.anjankow.gdrivesync
 Categories=Qt;KDE;Network;FileTransfer;
 StartupNotify=true

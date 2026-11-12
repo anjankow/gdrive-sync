@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- fallback when the icon theme does not have the application icon (e.g. when run without installing) -->
+    <qresource prefix="/icons">
+        <file alias="gdrive-sync.png">../data/icons/256-apps-io.github.anjankow.gdrivesync.png</file>
+    </qresource>
+</RCC>

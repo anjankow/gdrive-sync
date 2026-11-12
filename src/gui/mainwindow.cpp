@@ -50,7 +50,6 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     , m_nam(new QNetworkAccessManager(this))
 {
     setWindowTitle(i18nc("@title:window", "Google Drive Sync"));
-    setWindowIcon(QIcon::fromTheme(QStringLiteral("folder-cloud")));
     openFolder = [](const QString& path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); };
 
     auto* central = new QWidget(this);
