@@ -119,9 +119,14 @@ private Q_SLOTS:
         QVERIFY(f.startLoggedIn());
         f.server.addFolder(QStringLiteral("Docs"));
         f.server.setResponseDelayMs(1200);
-        Heartbeat heartbeat;
+        // Building and first showing the dialog is GUI work of its own (slow under
+        // sanitizers), so it is only required not to wait for the Drive answer.
+        QElapsedTimer opening;
+        opening.start();
         AddFolderDialog dialog(f.core.get());
         dialog.show();
+        QVERIFY2(opening.elapsed() < 1000, "opening the dialog must not wait for Drive");
+        Heartbeat heartbeat;
         QTreeWidgetItem* root = dialog.tree()->topLevelItem(0);
         // the dialog is usable at once and shows a placeholder while loading
         QCOMPARE(root->childCount(), 1);
