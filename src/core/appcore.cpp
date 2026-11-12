@@ -54,6 +54,7 @@ AppCore::AppCore(GoogleEndpoints endpoints, SecretStore* secrets, PlacesIntegrat
     , m_browser(std::move(browser))
     , m_scheduler(m_paths.unitDir, m_paths.executable, std::move(systemctl))
     , m_config(KSharedConfig::openConfig(m_paths.configFile, KConfig::SimpleConfig))
+    , m_configWriter(m_config)
 {
     qRegisterMetaType<gds::DriveItem>();
     qRegisterMetaType<QVector<gds::DriveItem>>();
@@ -67,7 +68,7 @@ AppCore::AppCore(GoogleEndpoints endpoints, SecretStore* secrets, PlacesIntegrat
         Logger::instance().setDirectory(m_paths.logDir);
         gds::logError(QStringLiteral("Log location %1 cannot be used: %2").arg(logDirectory(), logError));
     }
-    m_folders = new FolderManager(m_config, m_paths.stateDir, places, this);
+    m_folders = new FolderManager(m_config, &m_configWriter, m_paths.stateDir, places, this);
     setupLogging();
     connect(m_secrets, &SecretStore::opened, this, &AppCore::onStoreOpened);
     m_thread.setObjectName(QStringLiteral("gdrive-sync-worker"));
@@ -83,6 +84,7 @@ AppCore::~AppCore()
     m_thread.wait();
     // background tasks reference members of this object
     QThreadPool::globalInstance()->waitForDone();
+    m_configWriter.flush();
 }
 
 QString AppCore::logDirectory() const
@@ -110,7 +112,7 @@ bool AppCore::setLogDirectory(const QString& directory, QString* error)
         group.deleteEntry("directory");
     else
         group.writeEntry("directory", target);
-    m_config->sync();
+    m_configWriter.save();
     logInfo(QStringLiteral("Log location changed to %1 (previous log file: %2)")
                 .arg(Logger::instance().filePath(), previous.isEmpty() ? QStringLiteral("none") : previous));
     return true;
@@ -272,7 +274,7 @@ void AppCore::storeAccountInfo(const AccountInfo& info)
     group.writeEntry("email", info.email);
     group.writeEntry("name", info.displayName);
     group.writeEntry("photo", info.photoLink);
-    m_config->sync();
+    m_configWriter.save();
 }
 
 /// Updates name and picture of a restored login in the background.
@@ -310,7 +312,7 @@ SyncDirection AppCore::direction() const
 void AppCore::setDirection(SyncDirection direction)
 {
     m_config->group("Account").writeEntry("direction", int(direction));
-    m_config->sync();
+    m_configWriter.save();
     logInfo(QStringLiteral("Sync direction set to %1").arg(directionLabel(direction)));
     Q_EMIT accountChanged();
 }
@@ -412,7 +414,7 @@ void AppCore::logout()
     m_tokens.reset();
     m_folders->clear();
     m_config->deleteGroup("Account");
-    m_config->sync();
+    m_configWriter.save();
 
     // Revoke the grant at Google and remove the timer without blocking the GUI.
     const GoogleEndpoints endpoints = m_endpoints;

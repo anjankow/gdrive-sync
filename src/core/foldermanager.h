@@ -1,5 +1,6 @@
 #pragma once
 
+#include "configwriter.h"
 #include "integration.h"
 
 #include <KSharedConfig>
@@ -24,8 +25,8 @@ struct FolderConfig {
 class FolderManager : public QObject {
     Q_OBJECT
 public:
-    FolderManager(
-        KSharedConfig::Ptr config, QString stateDir, PlacesIntegration* places, QObject* parent = nullptr);
+    FolderManager(KSharedConfig::Ptr config, ConfigWriter* writer, QString stateDir,
+        PlacesIntegration* places, QObject* parent = nullptr);
 
     QVector<FolderConfig> folders() const { return m_folders; }
     const FolderConfig* find(const QString& id) const;
@@ -58,6 +59,7 @@ private:
     void save();
 
     KSharedConfig::Ptr m_config;
+    ConfigWriter* m_writer;
     QString m_stateDir;
     PlacesIntegration* m_places;
     QVector<FolderConfig> m_folders;

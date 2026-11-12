@@ -1,5 +1,6 @@
 add_library(gdrivesync-core STATIC
     appcore.cpp
+    configwriter.cpp
     driveclient.cpp
     foldermanager.cpp
     format.cpp
