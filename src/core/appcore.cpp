@@ -438,7 +438,12 @@ void AppCore::login()
             m_flow->deleteLater();
             m_flow = nullptr;
             m_loginLease.reset();
-            Q_EMIT loginFailed(reason);
+            if (std::exchange(m_loginCancelRequested, false)) {
+                logInfo(QStringLiteral("Sign-in cancelled"));
+                Q_EMIT loginCancelled();
+            } else {
+                Q_EMIT loginFailed(reason);
+            }
         });
         m_flow->start();
     });
@@ -447,10 +452,12 @@ void AppCore::login()
 void AppCore::cancelLogin()
 {
     if (m_flow) {
-        m_flow->cancel();
+        m_loginCancelRequested = true;
+        m_flow->cancel(); // reported as loginCancelled(), not as a failure
     } else if (m_loginPending) {
         m_loginPending = false;
-        Q_EMIT loginFailed(QStringLiteral("Sign-in cancelled"));
+        logInfo(QStringLiteral("Sign-in cancelled"));
+        Q_EMIT loginCancelled();
     }
 }
 

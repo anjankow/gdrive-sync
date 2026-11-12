@@ -211,6 +211,11 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
         showError(i18nc("@title:window", "Sign-in Failed"), error);
     });
     connect(m_core, &AppCore::loggedOut, this, [this]() { log(i18n("Signed out.")); });
+    connect(m_core, &AppCore::loginCancelled, this, [this]() {
+        // the user's own choice: no message box
+        refreshAccount();
+        log(i18n("Sign-in cancelled."));
+    });
     connect(m_core, &AppCore::clientCredentialsRequired, this, [this]() {
         refreshAccount();
         log(i18n("Enter the Google API client of your Google Cloud project, then sign in."));

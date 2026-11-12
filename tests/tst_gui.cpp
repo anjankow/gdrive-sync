@@ -353,6 +353,32 @@ private Q_SLOTS:
     }
 
     // --------------------------------------------------------------- account
+    void cancellingTheSignInShowsNoMessage()
+    {
+        Fixture f;
+        f.secrets.preset(SecretKeys::clientId(), QStringLiteral("saved-client"));
+        f.browser.neverReturns = true; // the user leaves the Google page open
+        f.createCore();
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(f.initialize());
+        auto* login = child<QPushButton>(&window, "loginButton");
+
+        QTest::mouseClick(login, Qt::LeftButton);
+        QTRY_COMPARE(f.browser.opened.size(), 1);
+        QCOMPARE(login->text(), QStringLiteral("Cancel Sign-in"));
+        QSignalSpy cancelled(f.core.get(), &AppCore::loginCancelled);
+        QTest::mouseClick(login, Qt::LeftButton);
+        QCOMPARE(cancelled.count(), 1);
+        QTest::qWait(300); // a message box would be opened from the event loop
+        QVERIFY(!QApplication::activeModalWidget());
+        QCOMPARE(login->text(), QStringLiteral("Sign In"));
+        QVERIFY(!f.core->isLoginInProgress());
+        const QString log = child<QPlainTextEdit>(&window, "log")->toPlainText();
+        QVERIFY(log.contains(QStringLiteral("Sign-in cancelled.")));
+        QVERIFY(!log.contains(QStringLiteral("Sign-in failed")));
+    }
+
     void signInGoesStraightToTheBrowserWhenTheClientIsSaved()
     {
         Fixture f;
