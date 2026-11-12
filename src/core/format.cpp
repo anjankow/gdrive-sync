@@ -67,4 +67,11 @@ QString formatResult(const SyncResult& r)
     return text;
 }
 
+QString formatStatus(const SyncResult& r)
+{
+    if (r.status == SyncResult::Success && !r.needsAttention())
+        return QStringLiteral("Synced");
+    return formatResult(r);
+}
+
 } // namespace gds
