@@ -80,10 +80,10 @@ jobs:
         run: run-clang-tidy -quiet -p build "$PWD/src/.*\.cpp$"
 
   package:
-    name: Debian package (amd64, Ubuntu 24.04)
-    # Only for merges to main; the binary matches Ubuntu 24.04 / Qt 5.15 / KF 5.115.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build-and-test, sanitizers, static-analysis]
+    name: Packages (deb, AppImage; amd64)
+    # Also on pull requests, so that packaging changes are checked before a
+    # release. It runs next to the tests: run-latest-build.sh only takes
+    # packages from runs that passed as a whole.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -108,8 +108,15 @@ jobs:
           (cd build && cpack -G DEB)
           dpkg-deb --info build/*.deb
           dpkg-deb --contents build/*.deb
+      - name: Build AppImage
+        run: scripts/build-appimage.sh build "${{ steps.version.outputs.base }}${{ steps.version.outputs.suffix }}"
       - uses: actions/upload-artifact@v4
         with:
           name: gdrive-sync-deb
           path: build/*.deb
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gdrive-sync-appimage
+          path: build/*.AppImage
           if-no-files-found: error

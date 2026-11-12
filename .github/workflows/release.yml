@@ -54,10 +54,11 @@ jobs:
           cmake --build build
       - name: Test
         run: xvfb-run -a dbus-run-session -- ctest --test-dir build --output-on-failure --timeout 300
-      - name: Build package
+      - name: Build packages
         run: |
           (cd build && cpack -G DEB)
           dpkg-deb --info build/*.deb
+          scripts/build-appimage.sh build "${{ steps.version.outputs.version }}"
       - name: Tag and publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,4 +66,4 @@ jobs:
           tag="v${{ steps.version.outputs.version }}"
           git tag "$tag"
           git push origin "$tag"
-          gh release create "$tag" build/*.deb --title "$tag" --generate-notes --verify-tag
+          gh release create "$tag" build/*.deb build/*.AppImage --title "$tag" --generate-notes --verify-tag

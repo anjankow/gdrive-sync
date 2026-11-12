@@ -44,6 +44,9 @@ Google Drive folders with local folders.
   Settings → Log Location).
 
 ### Distribution
-- `.deb` package for Ubuntu 24.04 amd64, built by CI on every merge to main.
-  `scripts/run-latest-build.sh` downloads the latest build and runs it without installing it.
-- Manual release workflow (patch, minor or major) that publishes the `.deb` as a GitHub release.
+- `.deb` package for Ubuntu 24.04 amd64, and an AppImage (x86_64) that runs without installing:
+  download it, make it executable and start it.
+- Both are built by CI on every merge to main. `scripts/run-latest-build.sh` downloads the latest
+  `.deb` build and runs it without installing it.
+- Manual release workflow (patch, minor or major) that publishes the `.deb` and the AppImage as a
+  GitHub release.
