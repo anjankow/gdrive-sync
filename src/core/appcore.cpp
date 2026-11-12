@@ -160,7 +160,7 @@ void AppCore::setupLogging()
         []() { logWarn(QStringLiteral("Google rejected the stored sign-in; a new sign-in is required")); });
     connect(this, &AppCore::folderSyncStarted, this, [this](const QString& id) {
         logDebug(QStringLiteral("Sync started: %1, direction %2, %3")
-                     .arg(folderLabel(id), directionLabel(direction()),
+                     .arg(folderLabel(id), directionLabel(folderDirection(id)),
                          m_batchInteractive ? QStringLiteral("manual") : QStringLiteral("automatic")));
     });
     connect(this, &AppCore::conflictsFound, this,
@@ -397,18 +397,35 @@ void AppCore::refreshAccountInfo()
         });
 }
 
-SyncDirection AppCore::direction() const
+SyncDirection AppCore::defaultDirection() const
 {
-    const int value = m_config->group("Account").readEntry("direction", 0);
-    return value >= 1 && value <= 3 ? SyncDirection(value) : SyncDirection::Unset;
+    return m_folders->defaultDirection();
 }
 
-void AppCore::setDirection(SyncDirection direction)
+void AppCore::setDefaultDirection(SyncDirection direction)
 {
-    m_config->group("Account").writeEntry("direction", int(direction));
-    m_configWriter.save();
-    logInfo(QStringLiteral("Sync direction set to %1").arg(directionLabel(direction)));
-    Q_EMIT accountChanged();
+    m_folders->setDefaultDirection(direction);
+}
+
+SyncDirection AppCore::folderDirection(const QString& id) const
+{
+    const FolderConfig* f = m_folders->find(id);
+    return f ? f->direction : SyncDirection::Unset;
+}
+
+bool AppCore::setFolderDirection(const QString& id, SyncDirection direction, QString* error)
+{
+    if (m_syncing) {
+        if (error)
+            *error = QStringLiteral("A sync is running. Wait for it to finish or cancel it first.");
+        return false;
+    }
+    if (direction == SyncDirection::Unset || !m_folders->setDirection(id, direction)) {
+        if (error)
+            *error = QStringLiteral("Unknown folder or direction");
+        return false;
+    }
+    return true;
 }
 
 void AppCore::login()
@@ -496,7 +513,6 @@ void AppCore::onTokens(const OAuthTokens& tokens)
             const QString previous = accountEmail();
             if (!previous.isEmpty() && previous != about.value.email) {
                 m_folders->clear();
-                m_config->group("Account").deleteEntry("direction");
             }
             m_tokens = source;
             m_accountRefreshed = true;
@@ -676,7 +692,7 @@ bool AppCore::syncAll(bool interactive)
 
 bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
 {
-    if (m_syncing || !isLoggedIn() || folders.isEmpty() || direction() == SyncDirection::Unset)
+    if (m_syncing || !isLoggedIn() || folders.isEmpty())
         return false;
     QDir().mkpath(m_paths.stateDir);
     if (!m_lock) {
@@ -696,7 +712,7 @@ bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
         job.driveFolderId = f.driveFolderId;
         job.localPath = f.localPath;
         job.stateFile = m_folders->stateFile(f.id);
-        job.direction = direction();
+        job.direction = f.direction;
         job.interactive = interactive;
         m_queue.append(job);
     }

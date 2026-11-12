@@ -17,8 +17,9 @@ Google Drive folders with local folders.
   the first sync, unless the direction is Drive to local.
 
 ### Sync
-- Sync direction chosen after sign-in: two-way, Drive to local, or local to Drive. It applies to
-  all folders until sign-out.
+- Sync direction per folder: two-way, Drive to local, or local to Drive. It can be changed in
+  the folder list at any time. New folders start with the default direction from the settings
+  (two-way unless changed).
 - Sync on request (selected folder or all), cancellable at any time.
 - Progress bar with bytes synced and remaining, and the file being transferred.
 - Every deletion is listed for confirmation before anything is deleted. Deleted files go to the

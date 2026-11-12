@@ -24,6 +24,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QWheelEvent>
 
 using namespace gds;
 using namespace gdstest;
@@ -309,6 +310,95 @@ private Q_SLOTS:
         QVERIFY(f.server.existsPath(QStringLiteral("Docs/a.txt")));
     }
 
+    // ------------------------------------------------------------ directions
+    void folderListHasADirectionDropdownPerFolder()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString a = f.mount(f.server.addFolder(QStringLiteral("A")), QStringLiteral("A"));
+        f.core->setDefaultDirection(SyncDirection::DriveToLocal);
+        const QString b = f.mount(f.server.addFolder(QStringLiteral("B")), QStringLiteral("B"));
+        MainWindow window(f.core.get());
+        window.show();
+        auto* list = child<QTreeWidget>(&window, "folderList");
+        QCOMPARE(list->headerItem()->text(2), QStringLiteral("Direction"));
+        const auto comboOf = [&](const QString& id) -> QComboBox* {
+            for (int i = 0; i < list->topLevelItemCount(); ++i) {
+                auto* combo = qobject_cast<QComboBox*>(list->itemWidget(list->topLevelItem(i), 2));
+                if (combo && combo->property("folderId").toString() == id)
+                    return combo;
+            }
+            return nullptr;
+        };
+        QVERIFY(comboOf(a) && comboOf(b));
+        // all three directions are offered; each folder shows its own
+        QCOMPARE(comboOf(a)->count(), 3);
+        QCOMPARE(comboOf(a)->currentText(), QStringLiteral("Two-way"));
+        QCOMPARE(comboOf(b)->currentText(), QStringLiteral("Drive to local"));
+
+        // choosing another entry changes that folder only
+        QComboBox* combo = comboOf(a);
+        const int index = combo->findText(QStringLiteral("Local to Drive"));
+        combo->setCurrentIndex(index);
+        Q_EMIT combo->activated(index); // what a click on the entry does
+        QTRY_COMPARE(f.core->folderDirection(a), SyncDirection::LocalToDrive);
+        QCOMPARE(f.core->folderDirection(b), SyncDirection::DriveToLocal);
+        QTRY_COMPARE(comboOf(a)->currentText(), QStringLiteral("Local to Drive")); // the list was rebuilt
+        QVERIFY(child<QPlainTextEdit>(&window, "log")
+                    ->toPlainText()
+                    .contains(QStringLiteral("Sync direction of \"A\": Local to Drive")));
+
+        // the mouse wheel over the list does not change a direction
+        QWheelEvent wheel(QPointF(5, 5), comboOf(a)->mapToGlobal(QPoint(5, 5)), QPoint(), QPoint(0, -120),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(comboOf(a), &wheel);
+        QCOMPARE(comboOf(a)->currentText(), QStringLiteral("Local to Drive"));
+
+        // not changeable while a sync is running
+        f.server.addFile(
+            QStringLiteral("big.bin"), f.server.idByPath(QStringLiteral("A")), QByteArray(2000000, 'x'));
+        QVERIFY(f.core->setFolderDirection(a, SyncDirection::TwoWay));
+        f.server.setDownloadChunkDelayMs(10);
+        QSignalSpy finished(f.core.get(), &AppCore::syncFinished);
+        QVERIFY(f.core->syncFolder(a));
+        QTRY_VERIFY(!comboOf(a)->isEnabled());
+        f.core->cancelSync();
+        QVERIFY(finished.count() > 0 || finished.wait(10000));
+        QTRY_VERIFY(comboOf(a)->isEnabled());
+    }
+
+    void defaultSyncDirectionIsChangedInTheSettings()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        QAction* action = window.findChild<QAction*>(QStringLiteral("actionDefaultDirection"));
+        QVERIFY(action);
+        QCOMPARE(action->text(), QStringLiteral("Default Sync Direction"));
+
+        action->trigger();
+        auto* dialog = child<DirectionDialog>(&window, "directionDialog");
+        QVERIFY(dialog);
+        QCOMPARE(dialog->windowTitle(), QStringLiteral("Default Sync Direction"));
+        QCOMPARE(dialog->direction(), SyncDirection::TwoWay); // two-way unless changed
+        child<QRadioButton>(dialog, "localToDrive")->setChecked(true);
+        dialog->accept();
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::LocalToDrive);
+
+        // a folder added now gets it; the dialog shows the current default next time
+        const QString id = f.mount(f.server.addFolder(QStringLiteral("Docs")), QStringLiteral("Docs"));
+        QCOMPARE(f.core->folderDirection(id), SyncDirection::LocalToDrive);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        action->trigger();
+        dialog = window.findChildren<DirectionDialog*>().last();
+        QCOMPARE(dialog->direction(), SyncDirection::LocalToDrive);
+        // cancelling changes nothing
+        child<QRadioButton>(dialog, "twoWay")->setChecked(true);
+        dialog->reject();
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::LocalToDrive);
+    }
+
     void unmountOfANonEmptyFolderOffersToKeepTheLocalFiles()
     {
         // button of the question: Yes = keep all local files, No = delete all of them
@@ -469,7 +559,7 @@ private Q_SLOTS:
         QVERIFY(window.findChildren<CredentialsDialog*>().isEmpty());
     }
 
-    void signInAsksForDirectionAndSignOutClears()
+    void signInAndSignOutThroughTheWindow()
     {
         Fixture f;
         f.createCore();
@@ -510,14 +600,9 @@ private Q_SLOTS:
         for (const QLabel* label : labels)
             QVERIFY2(!label->text().contains(QStringLiteral("Signed in as")), qPrintable(label->text()));
 
-        // the direction is asked right after the sign-in
-        auto* direction = child<DirectionDialog>(&window, "directionDialog");
-        QVERIFY(direction);
-        QTRY_VERIFY(direction->isVisible());
-        child<QRadioButton>(direction, "driveToLocal")->setChecked(true);
-        direction->accept();
-        QCOMPARE(f.core->direction(), SyncDirection::DriveToLocal);
-        QVERIFY(child<QLabel>(&window, "directionLabel")->text().contains(QStringLiteral("Drive to local")));
+        // no direction is asked after the sign-in: folders can be added right away
+        QTest::qWait(100);
+        QVERIFY(window.findChildren<DirectionDialog*>().isEmpty());
         QVERIFY(child<QPushButton>(&window, "addButton")->isEnabled());
 
         // sign out from the account menu (after confirmation)
@@ -538,7 +623,6 @@ private Q_SLOTS:
         QTRY_VERIFY(child<QLabel>(avatar->menu(), "accountMenuInfo")
                         ->text()
                         .contains(QStringLiteral("dave@example.com")));
-        QTRY_VERIFY(window.findChildren<DirectionDialog*>().size() >= 1); // asked again for the new session
     }
 
     void profilePictureReplacesTheSignInButton()
@@ -614,7 +698,7 @@ private Q_SLOTS:
             entries.append(a->text());
         QCOMPARE(entries,
             (QStringList {QStringLiteral("Google API Client"), QStringLiteral("Automatic Sync"),
-                QStringLiteral("Log Location")}));
+                QStringLiteral("Default Sync Direction"), QStringLiteral("Log Location")}));
         // these are no longer part of the main window itself
         QVERIFY(!child<QWidget>(&window, "credentialsButton"));
         QVERIFY(!child<QWidget>(&window, "autoSyncCheck"));

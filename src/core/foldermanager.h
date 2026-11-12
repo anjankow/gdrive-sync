@@ -2,6 +2,7 @@
 
 #include "configwriter.h"
 #include "integration.h"
+#include "synctypes.h"
 
 #include <KSharedConfig>
 
@@ -22,6 +23,8 @@ struct FolderConfig {
     /// The local folder already held files when it was added: unmounting
     /// then lets the user keep the local files.
     bool initiallyNonEmpty = false;
+    /// Chosen per folder; a new folder starts with the default direction.
+    SyncDirection direction = SyncDirection::TwoWay;
 };
 
 /// Manages the list of mounted folders. Each folder is independent of the others.
@@ -56,6 +59,12 @@ public:
 
     void recordSync(const QString& id, const QString& status);
 
+    /// Direction given to newly added folders (Settings; two-way unless changed).
+    SyncDirection defaultDirection() const;
+    void setDefaultDirection(SyncDirection direction);
+    /// Changes the direction of one folder; it applies from its next sync.
+    bool setDirection(const QString& id, SyncDirection direction);
+
 Q_SIGNALS:
     void foldersChanged();
     void folderRemoved(const QString& id, bool ok, const QString& error);
@@ -63,6 +72,7 @@ Q_SIGNALS:
 private:
     void load();
     void save();
+    void migrateAccountDirection();
 
     KSharedConfig::Ptr m_config;
     ConfigWriter* m_writer;

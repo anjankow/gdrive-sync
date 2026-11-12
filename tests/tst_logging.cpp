@@ -77,9 +77,10 @@ private Q_SLOTS:
         QVERIFY(f.setClient(QStringLiteral("cid"), QStringLiteral("very-secret-value")));
         f.server.setAccountEmail(QStringLiteral("alice@example.com"));
         QVERIFY(login(f));
-        f.core->setDirection(SyncDirection::DriveToLocal);
+        f.core->setDefaultDirection(SyncDirection::DriveToLocal);
         const QString docs = f.server.addFolder(QStringLiteral("Docs"));
         const QString id = f.mount(docs, QStringLiteral("Docs"));
+        QVERIFY(f.core->setFolderDirection(id, SyncDirection::LocalToDrive));
         QSignalSpy autoSync(f.core.get(), &AppCore::autoSyncChanged);
         f.core->setAutoSync(true, 45);
         QVERIFY(autoSync.wait(10000));
@@ -94,7 +95,9 @@ private Q_SLOTS:
         QVERIFY(anyContains(info, QStringLiteral("Google API client changed")));
         QVERIFY(anyContains(info, QStringLiteral("Sign-in started")));
         QVERIFY(anyContains(info, QStringLiteral("Signed in as alice@example.com")));
-        QVERIFY(anyContains(info, QStringLiteral("Sync direction set to Drive to local")));
+        QVERIFY(anyContains(
+            info, QStringLiteral("Default sync direction for new folders set to Drive to local")));
+        QVERIFY(anyContains(info, QStringLiteral("set to Local to Drive")));
         QVERIFY(anyContains(info, QStringLiteral("Folder added: Drive folder \"Docs\"")));
         QVERIFY(anyContains(info, QStringLiteral("Automatic sync enabled, every 45 minutes")));
         QVERIFY(anyContains(info, QStringLiteral("Automatic sync disabled")));
@@ -308,8 +311,8 @@ private Q_SLOTS:
 
         // later events go to the new file only
         const QByteArray oldContent = readFile(first);
-        f.core->setDirection(SyncDirection::LocalToDrive);
-        QVERIFY(f.logText().contains(QStringLiteral("Sync direction set to Local to Drive")));
+        f.core->setDefaultDirection(SyncDirection::LocalToDrive);
+        QVERIFY(f.logText().contains(QStringLiteral("new folders set to Local to Drive")));
         QCOMPARE(readFile(first), oldContent);
 
         // remembered after a restart
@@ -398,11 +401,11 @@ private Q_SLOTS:
     {
         Fixture f;
         QVERIFY(f.startLoggedIn());
-        f.core->setDirection(SyncDirection::DriveToLocal);
+        f.core->setDefaultDirection(SyncDirection::DriveToLocal);
         const int before = f.logText().count(QLatin1Char('\n'));
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.logText().contains(QStringLiteral("Sync direction set to Drive to local")));
+        QVERIFY(f.logText().contains(QStringLiteral("new folders set to Drive to local")));
         QVERIFY(f.logText().count(QLatin1Char('\n')) > before);
     }
 

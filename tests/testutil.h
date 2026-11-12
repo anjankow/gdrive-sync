@@ -205,7 +205,7 @@ struct Fixture {
         createCore();
         if (!initialize() || !core->isLoggedIn())
             return false;
-        core->setDirection(direction);
+        core->setDefaultDirection(direction); // folders mounted by the test get it
         return true;
     }
 

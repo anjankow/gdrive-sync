@@ -42,7 +42,8 @@ private:
     void onLoginClicked();
     void onLoginSucceeded();
     void editCredentials();
-    void askDirection();
+    void editDefaultDirection();
+    void changeFolderDirection(const QString& id, gds::SyncDirection direction);
     void bringToFront();
     void showCredentialsDialog(const gds::Lease& lease);
     void addFolder();
@@ -61,7 +62,6 @@ private:
 
     AppCore* m_core;
     QLabel* m_account;
-    QLabel* m_direction;
     QPushButton* m_login;
     QToolButton* m_accountButton;
     QLabel* m_accountInfo;
@@ -70,6 +70,7 @@ private:
     QAction* m_apiClient;
     QAction* m_autoSyncAction;
     QAction* m_logLocation;
+    QAction* m_defaultDirection;
     QNetworkAccessManager* m_nam;
     QString m_avatarUrl;
     QTreeWidget* m_folders;

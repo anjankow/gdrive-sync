@@ -242,14 +242,102 @@ private Q_SLOTS:
         QVERIFY(f.server.existsPath(QStringLiteral("Docs/drive-only.txt")));
     }
 
-    void syncIsRefusedWithoutDirection()
+    void newFoldersGetTheDefaultDirectionWhichIsTwoWayUnlessChanged()
     {
         Fixture f;
-        QVERIFY(f.startLoggedIn(SyncDirection::Unset));
+        QVERIFY(f.startLoggedIn());
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::TwoWay);
+        const QString a = f.mount(f.server.addFolder(QStringLiteral("A")), QStringLiteral("A"));
+        QCOMPARE(f.core->folderDirection(a), SyncDirection::TwoWay);
+
+        f.core->setDefaultDirection(SyncDirection::DriveToLocal);
+        const QString b = f.mount(f.server.addFolder(QStringLiteral("B")), QStringLiteral("B"));
+        QCOMPARE(f.core->folderDirection(b), SyncDirection::DriveToLocal);
+        // the default only applies to folders added afterwards
+        QCOMPARE(f.core->folderDirection(a), SyncDirection::TwoWay);
+
+        // everything survives a restart
+        f.core->flushSettings();
+        f.createCore();
+        QVERIFY(f.initialize());
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::DriveToLocal);
+        QCOMPARE(f.core->folderDirection(a), SyncDirection::TwoWay);
+        QCOMPARE(f.core->folderDirection(b), SyncDirection::DriveToLocal);
+    }
+
+    void eachFolderSyncsInItsOwnDirection()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString up = f.server.addFolder(QStringLiteral("Up"));
+        const QString down = f.server.addFolder(QStringLiteral("Down"));
+        f.server.addFile(QStringLiteral("drive.txt"), up, "d");
+        f.server.addFile(QStringLiteral("drive.txt"), down, "d");
+        const QString upId = f.mount(up, QStringLiteral("Up"));
+        const QString downId = f.mount(down, QStringLiteral("Down"));
+        QVERIFY(f.core->setFolderDirection(upId, SyncDirection::LocalToDrive));
+        QVERIFY(f.core->setFolderDirection(downId, SyncDirection::DriveToLocal));
+        QVERIFY(writeFile(f.localDir(QStringLiteral("Up")) + QStringLiteral("/local.txt"), "l"));
+        QVERIFY(writeFile(f.localDir(QStringLiteral("Down")) + QStringLiteral("/local.txt"), "l"));
+
+        QVERIFY(f.core->syncAll());
+        QCOMPARE(f.waitForSync().size(), 2);
+        // Up: local to Drive only
+        QVERIFY(f.server.existsPath(QStringLiteral("Up/local.txt")));
+        QVERIFY(!QFile::exists(f.localDir(QStringLiteral("Up")) + QStringLiteral("/drive.txt")));
+        // Down: Drive to local only
+        QVERIFY(!f.server.existsPath(QStringLiteral("Down/local.txt")));
+        QVERIFY(QFile::exists(f.localDir(QStringLiteral("Down")) + QStringLiteral("/drive.txt")));
+    }
+
+    void directionOfAMappedFolderCanBeChangedLater()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn(SyncDirection::DriveToLocal));
         const QString docs = f.server.addFolder(QStringLiteral("Docs"));
         const QString id = f.mount(docs, QStringLiteral("Docs"));
-        QVERIFY(!f.core->syncFolder(id));
-        QVERIFY(!f.core->isSyncing());
+        const QString dir = f.localDir(QStringLiteral("Docs"));
+        QCOMPARE(f.sync(id).status, SyncResult::Success);
+        QVERIFY(writeFile(dir + QStringLiteral("/local.txt"), "l"));
+        QCOMPARE(f.sync(id).uploaded, 0); // Drive to local never uploads
+
+        QVERIFY(f.core->setFolderDirection(id, SyncDirection::TwoWay));
+        QCOMPARE(f.sync(id).uploaded, 1); // applies from the next sync
+        QVERIFY(f.server.existsPath(QStringLiteral("Docs/local.txt")));
+        QVERIFY(f.logText().contains(QStringLiteral("set to Two-way")));
+
+        // unknown folders and a running sync are refused
+        QVERIFY(!f.core->setFolderDirection(QStringLiteral("nope"), SyncDirection::TwoWay));
+        f.server.addFile(QStringLiteral("big.bin"), docs, QByteArray(2000000, 'x'));
+        f.server.setDownloadChunkDelayMs(10);
+        QSignalSpy finished(f.core.get(), &AppCore::syncFinished);
+        QVERIFY(f.core->syncFolder(id));
+        QString error;
+        QVERIFY(!f.core->setFolderDirection(id, SyncDirection::LocalToDrive, &error));
+        QVERIFY(error.contains(QStringLiteral("sync is running")));
+        QCOMPARE(f.core->folderDirection(id), SyncDirection::TwoWay);
+        f.core->cancelSync();
+        QVERIFY(finished.count() > 0 || finished.wait(10000));
+    }
+
+    void directionOfEarlierVersionsIsKept()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString id = f.mount(f.server.addFolder(QStringLiteral("Docs")), QStringLiteral("Docs"));
+        f.core->flushSettings();
+        f.core.reset();
+        {
+            // as written by versions with one direction for the whole sign-in
+            KConfig config(f.paths().configFile, KConfig::SimpleConfig);
+            config.group("Account").writeEntry("direction", int(SyncDirection::LocalToDrive));
+            config.group("Sync").deleteEntry("defaultDirection");
+            config.group("Folders").group(id).deleteEntry("direction");
+        }
+        f.createCore();
+        QVERIFY(f.initialize());
+        QCOMPARE(f.core->folderDirection(id), SyncDirection::LocalToDrive);
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::LocalToDrive);
     }
 
     void googleDocumentsAreSkipped()

@@ -56,7 +56,7 @@ private:
     QLineEdit* m_path;
 };
 
-/// Asked once after sign-in; valid until sign-out.
+/// Settings: the sync direction given to newly added folders.
 class DirectionDialog : public QDialog {
     Q_OBJECT
 public:

@@ -62,13 +62,15 @@ Google Cloud project:
 
 ## Usage
 
-1. **Sign In** with your google account via the browser. Choose the sync direction (two-way, Drive to local,
-   or local to Drive). It applies to all folders until you sign out.
+1. **Sign In** with your google account via the browser.
 2. **Add Folder**: pick a Drive folder, or **My Drive** for the whole drive, and a local destination. The destination may already hold files:
    the first sync uploads them to Drive (two-way and local to Drive; with Drive to local they stay local only).
    A file that exists on both sides with different content is asked about, in every direction.
-3. **Sync Selected** / **Sync All**.
-4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
+3. Choose the sync direction of each folder in the **Direction** column (two-way, Drive to local, or local
+   to Drive). New folders start with the default from **Settings → Default Sync Direction** (two-way
+   unless changed).
+4. **Sync Selected** / **Sync All**.
+5. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.
 
 

@@ -33,6 +33,65 @@ FolderManager::FolderManager(KSharedConfig::Ptr config, ConfigWriter* writer, QS
     , m_places(places)
 {
     load();
+    migrateAccountDirection();
+}
+
+namespace {
+    SyncDirection parseDirection(int value, SyncDirection fallback)
+    {
+        return value >= 1 && value <= 3 ? SyncDirection(value) : fallback;
+    }
+}
+
+/// Earlier versions had one direction for the whole sign-in session
+/// ("Account/direction"): it becomes the default and the direction of the
+/// folders that had none.
+void FolderManager::migrateAccountDirection()
+{
+    KConfigGroup account = m_config->group("Account");
+    if (!account.hasKey("direction"))
+        return;
+    const SyncDirection old = parseDirection(account.readEntry("direction", 0), SyncDirection::TwoWay);
+    KConfigGroup sync = m_config->group("Sync");
+    if (!sync.hasKey("defaultDirection"))
+        sync.writeEntry("defaultDirection", int(old));
+    const KConfigGroup root = m_config->group("Folders");
+    for (FolderConfig& f : m_folders) {
+        if (!root.group(f.id).hasKey("direction"))
+            f.direction = old;
+    }
+    account.deleteEntry("direction");
+    save();
+}
+
+SyncDirection FolderManager::defaultDirection() const
+{
+    return parseDirection(m_config->group("Sync").readEntry("defaultDirection", 0), SyncDirection::TwoWay);
+}
+
+void FolderManager::setDefaultDirection(SyncDirection direction)
+{
+    m_config->group("Sync").writeEntry("defaultDirection", int(direction));
+    m_writer->save();
+    logInfo(
+        QStringLiteral("Default sync direction for new folders set to %1").arg(directionLabel(direction)));
+}
+
+bool FolderManager::setDirection(const QString& id, SyncDirection direction)
+{
+    for (FolderConfig& f : m_folders) {
+        if (f.id != id)
+            continue;
+        if (f.direction == direction)
+            return true;
+        f.direction = direction;
+        save();
+        logInfo(QStringLiteral("Sync direction of \"%1\" (%2) set to %3")
+                    .arg(f.driveFolderName, f.localPath, directionLabel(direction)));
+        Q_EMIT foldersChanged();
+        return true;
+    }
+    return false;
 }
 
 void FolderManager::load()
@@ -50,6 +109,7 @@ void FolderManager::load()
         f.lastSync = g.readEntry("lastSync", QDateTime());
         f.lastStatus = g.readEntry("lastStatus", QString());
         f.initiallyNonEmpty = g.readEntry("initiallyNonEmpty", false);
+        f.direction = parseDirection(g.readEntry("direction", 0), SyncDirection::TwoWay);
         if (!f.driveFolderId.isEmpty() && !f.localPath.isEmpty())
             m_folders.append(f);
     }
@@ -70,6 +130,7 @@ void FolderManager::save()
         g.writeEntry("lastStatus", f.lastStatus);
         if (f.initiallyNonEmpty)
             g.writeEntry("initiallyNonEmpty", true);
+        g.writeEntry("direction", int(f.direction));
     }
     root.writeEntry("ids", ids);
     m_writer->save();
@@ -158,6 +219,7 @@ QString FolderManager::addFolder(
     f.driveFolderName = driveFolderName;
     f.localPath = clean;
     f.initiallyNonEmpty = nonEmpty;
+    f.direction = defaultDirection();
     m_folders.append(f);
     save();
     if (m_places)
