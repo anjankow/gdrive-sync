@@ -247,11 +247,15 @@ private Q_SLOTS:
         QCOMPARE(dialog.driveFolderId(), year);
         QVERIFY(ok->isEnabled());
 
-        // a destination that is not empty is refused, with an explanation
+        // a destination that already holds files is accepted too
         QVERIFY(writeFile(f.tmp.path() + QStringLiteral("/full/file.txt"), "x"));
         dialog.setLocalPath(f.tmp.path() + QStringLiteral("/full"));
+        QVERIFY(ok->isEnabled());
+        QVERIFY(dialog.validationLabel()->text().isEmpty());
+        // a file is not a folder
+        dialog.setLocalPath(f.tmp.path() + QStringLiteral("/full/file.txt"));
         QVERIFY(!ok->isEnabled());
-        QVERIFY(dialog.validationLabel()->text().contains(QStringLiteral("must be empty")));
+        QVERIFY(!dialog.validationLabel()->text().isEmpty());
         dialog.setLocalPath(QString());
         QVERIFY(!ok->isEnabled());
         dialog.setLocalPath(empty);
@@ -304,6 +308,58 @@ private Q_SLOTS:
         QVERIFY(f.server.existsPath(QStringLiteral("Docs/a.txt")));
     }
 
+    void unmountOfANonEmptyFolderOffersToKeepTheLocalFiles()
+    {
+        // button of the question: Yes = keep all local files, No = delete all of them
+        for (const auto answer : {QDialogButtonBox::Yes, QDialogButtonBox::No, QDialogButtonBox::Cancel}) {
+            Fixture f;
+            QVERIFY(f.startLoggedIn());
+            const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+            f.server.addFile(QStringLiteral("a.txt"), docs, "a");
+            const QString dir = f.localDir(QStringLiteral("Docs"));
+            QVERIFY(writeFile(dir + QStringLiteral("/mine.txt"), "m"));
+            const QString id = f.mount(docs, QStringLiteral("Docs"));
+            QCOMPARE(f.sync(id).status, SyncResult::Success);
+            MainWindow window(f.core.get());
+            window.show();
+            window.selectFolder(id);
+            QSignalSpy removed(f.core->folders(), &FolderManager::folderRemoved);
+
+            QStringList buttons;
+            auto* watcher = new QTimer(&window);
+            QObject::connect(watcher, &QTimer::timeout, watcher, [&buttons, watcher, answer]() {
+                QWidget* modal = QApplication::activeModalWidget();
+                auto* box = modal ? modal->findChild<QDialogButtonBox*>() : nullptr;
+                if (!box || !box->button(answer))
+                    return;
+                for (QAbstractButton* b : box->buttons())
+                    buttons.append(b->text().remove(QLatin1Char('&')));
+                watcher->stop();
+                box->button(answer)->click();
+            });
+            watcher->start(20);
+            QTest::mouseClick(child<QPushButton>(&window, "unmountButton"), Qt::LeftButton);
+
+            QVERIFY(buttons.contains(QStringLiteral("Unmount and Keep Local Files")));
+            QVERIFY(buttons.contains(QStringLiteral("Unmount and Delete All Local Files")));
+            if (answer == QDialogButtonBox::Cancel) {
+                QTest::qWait(200);
+                QCOMPARE(f.core->folders()->folders().size(), 1);
+                QVERIFY(QFile::exists(dir + QStringLiteral("/mine.txt")));
+                continue;
+            }
+            QVERIFY(removed.count() > 0 || removed.wait(10000));
+            QCOMPARE(child<QTreeWidget>(&window, "folderList")->topLevelItemCount(), 0);
+            const bool kept = answer == QDialogButtonBox::Yes;
+            QCOMPARE(QFile::exists(dir + QStringLiteral("/mine.txt")), kept);
+            QCOMPARE(QFile::exists(dir + QStringLiteral("/a.txt")), kept); // all files, not only the own ones
+            QTRY_VERIFY(child<QPlainTextEdit>(&window, "log")
+                            ->toPlainText()
+                            .contains(kept ? QStringLiteral("the local files were kept")
+                                           : QStringLiteral("the local copy was deleted")));
+        }
+    }
+
     // ------------------------------------------------------------- conflicts
     void conflictDialogCollectsAChoicePerFile()
     {
@@ -353,6 +409,32 @@ private Q_SLOTS:
     }
 
     // --------------------------------------------------------------- account
+    void cancellingTheSignInShowsNoMessage()
+    {
+        Fixture f;
+        f.secrets.preset(SecretKeys::clientId(), QStringLiteral("saved-client"));
+        f.browser.neverReturns = true; // the user leaves the Google page open
+        f.createCore();
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(f.initialize());
+        auto* login = child<QPushButton>(&window, "loginButton");
+
+        QTest::mouseClick(login, Qt::LeftButton);
+        QTRY_COMPARE(f.browser.opened.size(), 1);
+        QCOMPARE(login->text(), QStringLiteral("Cancel Sign-in"));
+        QSignalSpy cancelled(f.core.get(), &AppCore::loginCancelled);
+        QTest::mouseClick(login, Qt::LeftButton);
+        QCOMPARE(cancelled.count(), 1);
+        QTest::qWait(300); // a message box would be opened from the event loop
+        QVERIFY(!QApplication::activeModalWidget());
+        QCOMPARE(login->text(), QStringLiteral("Sign In"));
+        QVERIFY(!f.core->isLoginInProgress());
+        const QString log = child<QPlainTextEdit>(&window, "log")->toPlainText();
+        QVERIFY(log.contains(QStringLiteral("Sign-in cancelled.")));
+        QVERIFY(!log.contains(QStringLiteral("Sign-in failed")));
+    }
+
     void signInGoesStraightToTheBrowserWhenTheClientIsSaved()
     {
         Fixture f;

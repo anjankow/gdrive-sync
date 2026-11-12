@@ -186,12 +186,26 @@ private Q_SLOTS:
         f.core->initialize();
         QVERIFY(init.count() > 0 || init.wait());
         QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
+        QSignalSpy cancelled(f.core.get(), &AppCore::loginCancelled);
+        // while the wallet is still being opened
         f.core->login();
         QVERIFY(f.core->isLoginInProgress());
         f.core->cancelLogin();
-        QCOMPARE(failed.count(), 1);
+        QCOMPARE(cancelled.count(), 1);
         QVERIFY(!f.core->isLoginInProgress());
         QVERIFY(!f.core->isLoggedIn());
+        QTest::qWait(100);
+
+        // while the browser shows the Google sign-in page
+        cancelled.clear();
+        f.core->login();
+        QTRY_VERIFY(f.logText().contains(QStringLiteral("Sign-in started in the web browser")));
+        QVERIFY(f.core->isLoginInProgress());
+        f.core->cancelLogin();
+        QCOMPARE(cancelled.count(), 1);
+        QVERIFY(!f.core->isLoginInProgress());
+        QVERIFY(!f.core->isLoggedIn());
+        QCOMPARE(failed.count(), 0); // cancelling is not a failure
     }
 
     void loginSurvivesRestart()

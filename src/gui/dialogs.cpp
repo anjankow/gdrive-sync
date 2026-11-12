@@ -237,7 +237,7 @@ AddFolderDialog::AddFolderDialog(AppCore* core, QWidget* parent)
     m_tree->setHeaderHidden(true);
     layout->addWidget(m_tree, 1);
 
-    layout->addWidget(new QLabel(i18n("Local destination (must be an empty folder):"), this));
+    layout->addWidget(new QLabel(i18n("Local destination:"), this));
     auto* row = new QHBoxLayout;
     m_path = new QLineEdit(this);
     m_path->setObjectName(QStringLiteral("localPath"));
@@ -421,6 +421,8 @@ QString ConflictDialog::describe(ConflictKind kind)
         return i18n("Changed locally, deleted on Drive");
     case ConflictKind::RemoteModifiedLocalDeleted:
         return i18n("Changed on Drive, deleted locally");
+    case ConflictKind::DifferentBeforeFirstSync:
+        return i18n("Different on this computer and on Drive (not synced before)");
     case ConflictKind::None:
         break;
     }
@@ -434,8 +436,8 @@ ConflictDialog::ConflictDialog(
 {
     setWindowTitle(i18nc("@title:window", "Resolve Conflicts"));
     auto* layout = new QVBoxLayout(this);
-    auto* intro = new QLabel(i18n("These files in \"%1\" changed on both sides since the last sync. Choose "
-                                  "what to keep for each file.",
+    auto* intro = new QLabel(i18n("These files in \"%1\" differ between this computer and Google Drive. "
+                                  "Choose what to keep for each file.",
                                  folderName),
         this);
     intro->setWordWrap(true);

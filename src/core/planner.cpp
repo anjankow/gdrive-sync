@@ -166,15 +166,12 @@ namespace {
 
         // exists on both sides
         if (!s) {
-            if (l->size == r->size && localMd5(path) == r->md5) {
+            // never synced: identical files are paired, different ones are asked
+            // about in every direction, as neither version may be overwritten unasked
+            if (l->size == r->size && localMd5(path) == r->md5)
                 add(ActionType::Adopt);
-            } else if (twoWay) {
-                add(ActionType::Conflict, 0, ConflictKind::BothModified);
-            } else if (d2l) {
-                add(ActionType::Download, r->size);
-            } else {
-                add(ActionType::Upload, l->size);
-            }
+            else
+                add(ActionType::Conflict, 0, ConflictKind::DifferentBeforeFirstSync);
             return;
         }
 
@@ -356,8 +353,11 @@ QString conflictCopyPath(const QString& path, const QString& suffix, const Local
 }
 
 SyncPlan applyConflictChoices(const SyncPlan& plan, const QHash<QString, ConflictChoice>& choices,
-    const LocalTree& local, const RemoteTree& remote, const QString& conflictSuffix)
+    const LocalTree& local, const RemoteTree& remote, const QString& conflictSuffix, SyncDirection direction)
 {
+    // one-way syncs never write to the side they only read from
+    const bool mayUpload = direction != SyncDirection::DriveToLocal;
+    const bool mayDownload = direction != SyncDirection::LocalToDrive;
     SyncPlan out;
     out.skipped = plan.skipped;
     for (const SyncAction& a : plan.actions) {
@@ -374,16 +374,24 @@ SyncPlan applyConflictChoices(const SyncPlan& plan, const QHash<QString, Conflic
         }
         switch (a.conflict) {
         case ConflictKind::BothModified:
+        case ConflictKind::DifferentBeforeFirstSync:
             if (choice == ConflictChoice::KeepLocal) {
-                out.actions.append(make(ActionType::Upload, a.path, false, localSize));
+                // Drive to local: the local file stays and is paired with the Drive file as it is
+                out.actions.append(mayUpload ? make(ActionType::Upload, a.path, false, localSize)
+                                             : make(ActionType::Adopt, a.path));
             } else if (choice == ConflictChoice::KeepRemote) {
-                out.actions.append(make(ActionType::Download, a.path, false, remoteSize));
+                // local to Drive: the Drive file stays and is paired with the local file as it is
+                out.actions.append(mayDownload ? make(ActionType::Download, a.path, false, remoteSize)
+                                               : make(ActionType::Adopt, a.path));
             } else {
+                // the local version is kept under a new name next to the Drive version
                 SyncAction rename = make(ActionType::RenameLocal, a.path);
                 rename.newPath = conflictCopyPath(a.path, conflictSuffix, local);
                 out.actions.append(rename);
-                out.actions.append(make(ActionType::Download, a.path, false, remoteSize));
-                out.actions.append(make(ActionType::Upload, rename.newPath, false, localSize));
+                if (mayDownload)
+                    out.actions.append(make(ActionType::Download, a.path, false, remoteSize));
+                if (mayUpload)
+                    out.actions.append(make(ActionType::Upload, rename.newPath, false, localSize));
             }
             break;
         case ConflictKind::LocalModifiedRemoteDeleted:

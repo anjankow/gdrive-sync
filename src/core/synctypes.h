@@ -64,6 +64,9 @@ enum class ConflictKind {
     BothModified,
     LocalModifiedRemoteDeleted,
     RemoteModifiedLocalDeleted,
+    /// Never synced (e.g. a folder that was not empty when it was added):
+    /// the file exists locally and on Drive with different content.
+    DifferentBeforeFirstSync,
 };
 
 enum class ConflictChoice {

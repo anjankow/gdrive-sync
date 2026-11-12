@@ -143,6 +143,31 @@ void Logger::write(LogLevel level, const QString& message)
     trimIfLarge();
 }
 
+namespace {
+    QtMessageHandler g_console = nullptr;
+    bool g_passEverything = false;
+
+    void routeQtMessage(QtMsgType type, const QMessageLogContext& context, const QString& message)
+    {
+        const QString category = QString::fromUtf8(context.category ? context.category : "default");
+        const bool serious = type == QtCriticalMsg || type == QtFatalMsg;
+        if (serious)
+            logError(QStringLiteral("%1 (%2)").arg(message, category));
+        else
+            logDebug(QStringLiteral("Library message (%1): %2").arg(category, message));
+        if ((serious || g_passEverything) && g_console)
+            g_console(type, context, message);
+    }
+}
+
+QtMessageHandler installQtMessageRouting(QtMessageHandler console)
+{
+    g_passEverything = !qEnvironmentVariableIsEmpty("QT_LOGGING_RULES");
+    const QtMessageHandler previous = qInstallMessageHandler(routeQtMessage);
+    g_console = console ? console : previous;
+    return previous;
+}
+
 void logDebug(const QString& message)
 {
     Logger::instance().write(LogLevel::Debug, message);

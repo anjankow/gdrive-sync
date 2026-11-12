@@ -93,6 +93,86 @@ private Q_SLOTS:
         QCOMPARE(r.uploaded + r.downloaded + r.deletedLocal + r.deletedRemote, 0);
     }
 
+    // A Drive folder mapped to a local folder that already holds files.
+    void nonEmptyFolderUploadsItsFilesOnTheFirstSync()
+    {
+        for (SyncDirection d :
+            {SyncDirection::TwoWay, SyncDirection::LocalToDrive, SyncDirection::DriveToLocal}) {
+            Fixture f;
+            QVERIFY(f.startLoggedIn(d));
+            const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+            f.server.addFile(QStringLiteral("on-drive.txt"), docs, "drive");
+            const QString dir = f.localDir(QStringLiteral("Docs"));
+            QVERIFY(writeFile(dir + QStringLiteral("/mine.txt"), "my file"));
+            QVERIFY(writeFile(dir + QStringLiteral("/photos/2024/pic.jpg"), "jpeg"));
+            const QString id = f.mount(docs, QStringLiteral("Docs"));
+            QVERIFY(!id.isEmpty());
+
+            const SyncResult r = f.sync(id);
+            QCOMPARE(r.status, SyncResult::Success);
+            const bool uploads = d != SyncDirection::DriveToLocal;
+            const bool downloads = d != SyncDirection::LocalToDrive;
+            QCOMPARE(f.server.existsPath(QStringLiteral("Docs/mine.txt")), uploads);
+            QCOMPARE(f.server.existsPath(QStringLiteral("Docs/photos/2024/pic.jpg")), uploads);
+            if (uploads) {
+                QCOMPARE(f.server.contentByPath(QStringLiteral("Docs/mine.txt")), QByteArray("my file"));
+                QCOMPARE(r.uploaded, 2);
+            }
+            QCOMPARE(QFile::exists(dir + QStringLiteral("/on-drive.txt")), downloads);
+            // the local files are never removed
+            QCOMPARE(readFile(dir + QStringLiteral("/mine.txt")), QByteArray("my file"));
+            QCOMPARE(readFile(dir + QStringLiteral("/photos/2024/pic.jpg")), QByteArray("jpeg"));
+            QCOMPARE(f.deletionQuestions, 0);
+
+            // nothing left to do afterwards
+            const SyncResult again = f.sync(id);
+            QCOMPARE(again.uploaded + again.downloaded + again.deletedLocal + again.deletedRemote, 0);
+        }
+    }
+
+    void differentFileWithTheSameNameIsAskedBeforeTheFirstSync()
+    {
+        struct Case {
+            SyncDirection direction;
+            ConflictChoice choice;
+            QByteArray local; // expected afterwards
+            QByteArray drive;
+        };
+        const QVector<Case> cases {
+            {SyncDirection::DriveToLocal, ConflictChoice::KeepLocal, "local", "drive"},
+            {SyncDirection::DriveToLocal, ConflictChoice::KeepRemote, "drive", "drive"},
+            {SyncDirection::LocalToDrive, ConflictChoice::KeepLocal, "local", "local"},
+            {SyncDirection::LocalToDrive, ConflictChoice::KeepRemote, "local", "drive"},
+            {SyncDirection::TwoWay, ConflictChoice::KeepRemote, "drive", "drive"},
+        };
+        for (const Case& c : cases) {
+            Fixture f;
+            QVERIFY(f.startLoggedIn(c.direction));
+            const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+            const QString onDrive = f.server.addFile(QStringLiteral("notes.txt"), docs, "drive");
+            f.server.addFile(QStringLiteral("same.txt"), docs, "identical");
+            const QString dir = f.localDir(QStringLiteral("Docs"));
+            QVERIFY(writeFile(dir + QStringLiteral("/notes.txt"), "local"));
+            QVERIFY(writeFile(dir + QStringLiteral("/same.txt"), "identical"));
+            const QString id = f.mount(docs, QStringLiteral("Docs"));
+            f.conflictChoice = c.choice;
+
+            QCOMPARE(f.sync(id).status, SyncResult::Success);
+            // asked in every direction, and only about the file that differs
+            QCOMPARE(f.askedConflicts.size(), 1);
+            QCOMPARE(f.askedConflicts.first().path, QStringLiteral("notes.txt"));
+            QCOMPARE(f.askedConflicts.first().kind, ConflictKind::DifferentBeforeFirstSync);
+            QCOMPARE(readFile(dir + QStringLiteral("/notes.txt")), c.local);
+            QCOMPARE(f.server.file(onDrive).content, c.drive);
+
+            // decided once: the next sync asks nothing and transfers nothing
+            f.askedConflicts.clear();
+            const SyncResult again = f.sync(id);
+            QVERIFY(f.askedConflicts.isEmpty());
+            QCOMPARE(again.uploaded + again.downloaded, 0);
+        }
+    }
+
     void driveToLocalNeverUploads()
     {
         Fixture f;

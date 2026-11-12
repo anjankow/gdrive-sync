@@ -108,8 +108,9 @@ public:
     FolderManager* folders() const { return m_folders; }
     /// Lists the sub-folders of a Drive folder ("root" = My Drive) in the background.
     void listDriveFolders(const QString& parentId);
-    /// Unmounts a folder and deletes its local copy. Refused while it is syncing.
-    bool unmountFolder(const QString& id, QString* error = nullptr);
+    /// Unmounts a folder and deletes its local copy (or keeps the local files).
+    /// Refused while it is syncing.
+    bool unmountFolder(const QString& id, QString* error = nullptr, bool deleteLocalFiles = true);
 
     // sync
     bool isSyncing() const { return m_syncing; }
@@ -138,6 +139,8 @@ Q_SIGNALS:
     void initialized(bool ok, const QString& error);
     void loginSucceeded();
     void loginFailed(const QString& error);
+    /// The user cancelled the sign-in (cancelLogin()); not a failure.
+    void loginCancelled();
     /// login() found no Google API client in the wallet: it has to be entered first.
     void clientCredentialsRequired();
     void loggedOut();
@@ -189,6 +192,7 @@ private:
 
     QPointer<OAuthFlow> m_flow;
     bool m_loginPending = false; ///< sign-in waits for the wallet
+    bool m_loginCancelRequested = false;
     Lease m_loginLease;
     /// Only while a lease is held: the secrets are not kept in memory otherwise.
     std::shared_ptr<TokenSource> m_tokens;

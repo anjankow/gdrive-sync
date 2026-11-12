@@ -20,18 +20,6 @@ using namespace gds;
 
 namespace {
 
-QtMessageHandler previousHandler = nullptr;
-
-/// Unexpected problems reported by Qt or KDE libraries end up in the log as errors.
-void messageHandler(QtMsgType type, const QMessageLogContext& context, const QString& message)
-{
-    if (type == QtCriticalMsg || type == QtFatalMsg)
-        logError(QStringLiteral("%1 (%2)").arg(
-            message, QString::fromUtf8(context.category ? context.category : "")));
-    if (previousHandler)
-        previousHandler(type, context, message);
-}
-
 /// "gdrive-sync --sync": what the systemd timer runs. Syncs all folders
 /// without asking anything; deletions and conflicts are left pending.
 int runUnattended(QApplication& app)
@@ -70,6 +58,8 @@ int runUnattended(QApplication& app)
 
 int main(int argc, char** argv)
 {
+    // first: plugins may already print while the application is created
+    installQtMessageRouting();
     bool unattended = false;
     for (int i = 1; i < argc; ++i)
         unattended = unattended || std::strcmp(argv[i], "--sync") == 0;
@@ -96,7 +86,6 @@ int main(int argc, char** argv)
     about.processCommandLine(&parser);
 
     QNetworkProxyFactory::setUseSystemConfiguration(true);
-    previousHandler = qInstallMessageHandler(messageHandler);
 
     if (parser.isSet(QStringLiteral("sync")))
         return runUnattended(app);

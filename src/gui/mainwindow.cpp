@@ -211,6 +211,11 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
         showError(i18nc("@title:window", "Sign-in Failed"), error);
     });
     connect(m_core, &AppCore::loggedOut, this, [this]() { log(i18n("Signed out.")); });
+    connect(m_core, &AppCore::loginCancelled, this, [this]() {
+        // the user's own choice: no message box
+        refreshAccount();
+        log(i18n("Sign-in cancelled."));
+    });
     connect(m_core, &AppCore::clientCredentialsRequired, this, [this]() {
         refreshAccount();
         log(i18n("Enter the Google API client of your Google Cloud project, then sign in."));
@@ -224,7 +229,9 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_core->folders(), &FolderManager::folderRemoved, this,
         [this](const QString&, bool ok, const QString& error) {
             m_unmounting = false;
-            log(ok ? i18n("Folder unmounted; the local copy was deleted.") : error,
+            log(ok ? (m_unmountKeepsFiles ? i18n("Folder unmounted; the local files were kept.")
+                                          : i18n("Folder unmounted; the local copy was deleted."))
+                   : error,
                 ok ? LogLevel::Info : LogLevel::Error);
             refreshButtons();
         });
@@ -551,15 +558,33 @@ void MainWindow::unmountSelected()
     if (!f)
         return;
     const QString id = f->id;
-    const auto answer = KMessageBox::warningContinueCancel(this,
-        i18n("Unmount \"%1\"?\n\nThe local copy in %2 will be deleted. Nothing is deleted from Google Drive.",
-            f->driveFolderName, f->localPath),
-        i18nc("@title:window", "Unmount Folder"),
-        KGuiItem(i18n("Unmount and Delete Local Copy"), QStringLiteral("edit-delete")));
-    if (answer != KMessageBox::Continue)
-        return;
+    bool deleteLocalFiles = true;
+    if (f->initiallyNonEmpty) {
+        // the folder held the user's own files before it was added: let them choose
+        const auto answer = KMessageBox::questionTwoActionsCancel(this,
+            i18n("Unmount \"%1\"?\n\nThe folder %2 already held files when it was added. Keep all files in "
+                 "it, or delete all of them? Nothing is deleted from Google Drive.",
+                f->driveFolderName, f->localPath),
+            i18nc("@title:window", "Unmount Folder"),
+            KGuiItem(i18n("Unmount and Keep Local Files"), QStringLiteral("folder")),
+            KGuiItem(i18n("Unmount and Delete All Local Files"), QStringLiteral("edit-delete")),
+            KStandardGuiItem::cancel());
+        if (answer == KMessageBox::Cancel)
+            return;
+        deleteLocalFiles = answer == KMessageBox::SecondaryAction;
+    } else {
+        const auto answer = KMessageBox::warningContinueCancel(this,
+            i18n("Unmount \"%1\"?\n\nThe local copy in %2 will be deleted. Nothing is deleted from Google "
+                 "Drive.",
+                f->driveFolderName, f->localPath),
+            i18nc("@title:window", "Unmount Folder"),
+            KGuiItem(i18n("Unmount and Delete Local Copy"), QStringLiteral("edit-delete")));
+        if (answer != KMessageBox::Continue)
+            return;
+    }
     QString error;
-    if (m_core->unmountFolder(id, &error)) {
+    if (m_core->unmountFolder(id, &error, deleteLocalFiles)) {
+        m_unmountKeepsFiles = !deleteLocalFiles;
         m_unmounting = true;
         refreshButtons();
     } else {

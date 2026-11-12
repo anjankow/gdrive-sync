@@ -70,6 +70,8 @@ public:
         opened.append(url);
         if (refuse)
             return false;
+        if (neverReturns)
+            return true; // the user does not complete the sign-in
         QNetworkRequest req(url);
         req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
         QNetworkReply* reply = nam.get(req);
@@ -89,6 +91,7 @@ public:
     QString finalError; ///< why that page could not be loaded; empty when it was
     int finished = 0;
     bool refuse = false;
+    bool neverReturns = false;
 };
 
 /// A complete application core wired to the mock server and fakes.
