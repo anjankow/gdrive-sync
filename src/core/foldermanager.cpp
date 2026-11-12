@@ -132,6 +132,15 @@ QString FolderManager::addFolder(
         if (f.driveFolderId == driveFolderId)
             return setError(
                 QStringLiteral("This Google Drive folder is already mounted at %1.").arg(f.localPath));
+        // My Drive contains every folder: the same files would be synced twice
+        if (f.driveFolderId == rootFolderId())
+            return setError(
+                QStringLiteral("The whole of My Drive is already mounted at %1, and it contains this folder.")
+                    .arg(f.localPath));
+        if (driveFolderId == rootFolderId())
+            return setError(QStringLiteral("My Drive contains the already mounted folder \"%1\". Unmount the "
+                                           "other folders first to mount the whole drive.")
+                                .arg(f.driveFolderName));
     }
     const QString problem = validateDestination(localPath);
     if (!problem.isEmpty())

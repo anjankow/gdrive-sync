@@ -314,9 +314,8 @@ QString AddFolderDialog::driveFolderId() const
     const QList<QTreeWidgetItem*> selected = m_tree->selectedItems();
     if (selected.isEmpty() || selected.first()->data(0, PlaceholderRole).toBool())
         return {};
-    const QString id = selected.first()->data(0, IdRole).toString();
-    // The whole drive cannot be mounted, only a folder of it.
-    return id == QLatin1String("root") ? QString() : id;
+    // "root" stands for the whole of My Drive
+    return selected.first()->data(0, IdRole).toString();
 }
 
 QString AddFolderDialog::driveFolderName() const
@@ -350,7 +349,7 @@ void AddFolderDialog::validate()
 {
     QString problem;
     if (driveFolderId().isEmpty())
-        problem = i18n("Select a folder of your Google Drive (the whole drive cannot be mounted).");
+        problem = i18n("Select a folder of your Google Drive, or My Drive for the whole drive.");
     else if (localPath().isEmpty())
         problem = i18n("Choose a local destination folder.");
     else

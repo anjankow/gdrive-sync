@@ -40,7 +40,9 @@ public:
     /// empty (or not yet existing) directory outside the other mounts.
     QString validateDestination(const QString& path) const;
 
-    /// Mounts a Drive folder. Returns the new folder id, or empty on error.
+    /// Drive's alias of the top folder: mounting it syncs the whole of My Drive.
+    static QString rootFolderId() { return QStringLiteral("root"); }
+    /// Mounts a Drive folder (or rootFolderId()). Returns the new folder id, or empty on error.
     QString addFolder(const QString& driveFolderId, const QString& driveFolderName, const QString& localPath,
         QString* error);
 

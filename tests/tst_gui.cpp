@@ -229,10 +229,11 @@ private Q_SLOTS:
         QVERIFY(QDir().mkpath(empty));
         dialog.setLocalPath(empty);
 
-        // the whole drive cannot be chosen
+        // the whole drive can be chosen too
         tree->setCurrentItem(root);
-        QVERIFY(!ok->isEnabled());
-        QVERIFY(dialog.driveFolderId().isEmpty());
+        QVERIFY(ok->isEnabled());
+        QCOMPARE(dialog.driveFolderId(), QStringLiteral("root"));
+        QCOMPARE(dialog.driveFolderName(), QStringLiteral("My Drive"));
 
         tree->setCurrentItem(root->child(0));
         QVERIFY(ok->isEnabled());

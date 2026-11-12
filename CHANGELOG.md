@@ -11,6 +11,8 @@ Google Drive folders with local folders.
 
 ### Folders
 - Map any number of Drive folders to local folders. Each one is synced and unmounted on its own.
+- Map the whole of My Drive to one local folder. It cannot be combined with mappings of its
+  folders, so no file is synced twice.
 - The local folder may be new, empty or already hold files. Files already there are uploaded on
   the first sync, unless the direction is Drive to local.
 

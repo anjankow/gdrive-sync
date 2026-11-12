@@ -61,6 +61,36 @@ private Q_SLOTS:
         QVERIFY(!f.core->folders()->find(other)->initiallyNonEmpty);
     }
 
+    void myDriveAndItsFoldersAreNotMountedTwice()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+        FolderManager* fm = f.core->folders();
+        QString error;
+
+        // a folder is mounted: the whole drive (which contains it) is refused
+        const QString docsId
+            = fm->addFolder(docs, QStringLiteral("Docs"), f.localDir(QStringLiteral("Docs")), &error);
+        QVERIFY(!docsId.isEmpty());
+        QVERIFY(fm->addFolder(QStringLiteral("root"), QStringLiteral("My Drive"),
+                      f.localDir(QStringLiteral("All")), &error)
+                    .isEmpty());
+        QVERIFY(error.contains(QStringLiteral("Unmount the other folders first")));
+
+        // the whole drive is mounted: no folder of it can be mounted again
+        QSignalSpy removed(fm, &FolderManager::folderRemoved);
+        fm->removeFolder(docsId);
+        QVERIFY(removed.wait(5000));
+        const QString all = fm->addFolder(
+            QStringLiteral("root"), QStringLiteral("My Drive"), f.localDir(QStringLiteral("All")), &error);
+        QVERIFY2(!all.isEmpty(), qPrintable(error));
+        QVERIFY(fm->addFolder(docs, QStringLiteral("Docs"), f.localDir(QStringLiteral("Docs2")), &error)
+                    .isEmpty());
+        QVERIFY(error.contains(QStringLiteral("whole of My Drive is already mounted")));
+        QCOMPARE(fm->folders().size(), 1);
+    }
+
     void unmountCanKeepTheLocalFiles()
     {
         Fixture f;

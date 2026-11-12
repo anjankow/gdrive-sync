@@ -173,6 +173,30 @@ private Q_SLOTS:
         }
     }
 
+    void theWholeOfMyDriveCanBeSynced()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn(SyncDirection::TwoWay));
+        f.server.addFile(QStringLiteral("top.txt"), QStringLiteral("root"), "top");
+        const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+        f.server.addFile(QStringLiteral("inner.txt"), docs, "inner");
+        const QString id = f.mount(QStringLiteral("root"), QStringLiteral("My Drive"));
+        QVERIFY(!id.isEmpty());
+        const QString dir = f.localDir(QStringLiteral("My Drive"));
+
+        QCOMPARE(f.sync(id).status, SyncResult::Success);
+        QCOMPARE(readFile(dir + QStringLiteral("/top.txt")), QByteArray("top"));
+        QCOMPARE(readFile(dir + QStringLiteral("/Docs/inner.txt")), QByteArray("inner"));
+
+        // new local files land at the top of My Drive and in its folders
+        QVERIFY(writeFile(dir + QStringLiteral("/local-top.txt"), "lt"));
+        QVERIFY(writeFile(dir + QStringLiteral("/Docs/local-inner.txt"), "li"));
+        const SyncResult r = f.sync(id);
+        QCOMPARE(r.uploaded, 2);
+        QCOMPARE(f.server.contentByPath(QStringLiteral("local-top.txt")), QByteArray("lt"));
+        QCOMPARE(f.server.contentByPath(QStringLiteral("Docs/local-inner.txt")), QByteArray("li"));
+    }
+
     void driveToLocalNeverUploads()
     {
         Fixture f;
