@@ -16,11 +16,12 @@ namespace gds {
 
 /// Secrets in the KDE wallet (folder "gdrive-sync" of the network wallet).
 ///
-/// The wallet service can close a wallet at any time after it was opened
-/// (idle timeout, screen locker, the user locking it in KWalletManager, a
-/// restart of kwalletd). The values read at start are therefore kept in
-/// memory so that the application keeps working, and the wallet is asked to
-/// open again as soon as that happens.
+/// The application opens the wallet only for an action that needs it and
+/// closes it again afterwards. The wallet service can also close the wallet
+/// at any time (idle timeout, screen locker, the user locking it); the store
+/// then simply stays closed until the next action opens it. It never asks to
+/// open the wallet by itself, because every such request can show the
+/// password prompt.
 class KWalletSecretStore : public SecretStore {
     Q_OBJECT
 public:
@@ -30,6 +31,7 @@ public:
     void setWindowId(WId id) { m_windowId = id; }
 
     void open() override;
+    void close() override;
     bool isOpen() const override;
     QString read(const QString& key) const override;
     bool write(const QString& key, const QString& value) override;
@@ -37,16 +39,15 @@ public:
     QString lastError() const override { return m_lastError; }
 
 private:
-    void requestOpen();
     void onOpened(bool ok);
     void onClosed();
+    void dropWallet();
 
     std::unique_ptr<KWallet::Wallet> m_wallet;
     WId m_windowId = 0;
-    bool m_everOpened = false;
     bool m_opening = false;
-    QHash<QString, QString> m_cache; ///< values of our keys, valid while m_everOpened
-    QSet<QString> m_pendingRemovals; ///< removals to repeat once the wallet is open again
+    QHash<QString, QString> m_cache; ///< values of our keys while the wallet is open
+    QSet<QString> m_pendingRemovals; ///< removals to repeat the next time the wallet is open
     QString m_lastError;
 };
 

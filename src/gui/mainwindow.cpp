@@ -50,7 +50,6 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     , m_nam(new QNetworkAccessManager(this))
 {
     setWindowTitle(i18nc("@title:window", "Google Drive Sync"));
-    setWindowIcon(QIcon::fromTheme(QStringLiteral("folder-cloud")));
     openFolder = [](const QString& path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); };
 
     auto* central = new QWidget(this);
@@ -431,8 +430,23 @@ void MainWindow::onInitialized(bool ok, const QString& error)
 
 void MainWindow::editCredentials()
 {
+    // the saved client is shown from the wallet, and the change is stored there
+    m_core->requestSecrets(this, [this](const Lease& lease, const QString& error) {
+        if (!lease) {
+            log(error, LogLevel::Error);
+            showError(i18nc("@title:window", "Google API Client"), error);
+            return;
+        }
+        showCredentialsDialog(lease);
+    });
+}
+
+void MainWindow::showCredentialsDialog(const Lease& lease)
+{
     auto* dialog = new CredentialsDialog(m_core->clientId(), m_core->clientSecret(), this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    // the wallet stays open until the dialog is closed
+    connect(dialog, &QObject::destroyed, this, [lease]() {});
     connect(dialog, &QDialog::accepted, this, [this, dialog]() {
         QString error;
         if (!m_core->setClientCredentials(dialog->clientId(), dialog->clientSecret(), &error)) {

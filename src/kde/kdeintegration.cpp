@@ -48,7 +48,7 @@ void KdePlaces::removePlace(const QString& localPath)
 
 void KdeNotifier::notify(const QString& eventId, const QString& title, const QString& text)
 {
-    KNotification::event(eventId, title, text, QStringLiteral("folder-cloud"), nullptr,
+    KNotification::event(eventId, title, text, QStringLiteral("io.github.anjankow.gdrivesync"), nullptr,
         KNotification::CloseOnTimeout, QStringLiteral("gdrive-sync"));
 }
 

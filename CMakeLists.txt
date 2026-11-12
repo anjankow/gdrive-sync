@@ -18,6 +18,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(FeatureSummary)
+include(ECMInstallIcons)
 
 option(GDS_WERROR "Treat compiler warnings as errors" OFF)
 option(GDS_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
@@ -51,6 +52,8 @@ endif()
 
 install(FILES data/io.github.anjankow.gdrivesync.desktop DESTINATION ${KDE_INSTALL_APPDIR})
 install(FILES data/gdrive-sync.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR})
+file(GLOB GDS_ICONS data/icons/*-apps-io.github.anjankow.gdrivesync.png)
+ecm_install_icons(ICONS ${GDS_ICONS} DESTINATION ${KDE_INSTALL_ICONDIR} THEME hicolor)
 
 # ---- Debian package (cpack -G DEB)
 set(CPACK_GENERATOR "DEB")

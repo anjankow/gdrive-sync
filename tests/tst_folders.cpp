@@ -209,7 +209,7 @@ private Q_SLOTS:
         QVERIFY(!f.core->unmountFolder(id, &error));
         QVERIFY(!error.isEmpty());
         f.core->cancelSync();
-        QVERIFY(finished.wait(10000));
+        QVERIFY(finished.count() > 0 || finished.wait(10000));
         QVERIFY(f.core->unmountFolder(id));
     }
 

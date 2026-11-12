@@ -72,7 +72,7 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QVERIFY(f.core->setClientCredentials(QStringLiteral("gui-client"), QStringLiteral("gui-secret")));
+        QVERIFY(f.setClient(QStringLiteral("gui-client"), QStringLiteral("gui-secret")));
         MainWindow window(f.core.get());
         window.show();
         // the browser is in front while the user signs in
@@ -373,12 +373,12 @@ private Q_SLOTS:
 
         // without an OAuth client the button opens the client settings first
         QTest::mouseClick(login, Qt::LeftButton);
+        QTRY_VERIFY(window.findChild<CredentialsDialog*>()); // after the wallet is open
         auto* credentials = window.findChild<CredentialsDialog*>();
-        QVERIFY(credentials);
         child<QLineEdit>(credentials, "clientId")->setText(QStringLiteral("gui-client"));
         child<QLineEdit>(credentials, "clientSecret")->setText(QStringLiteral("gui-secret"));
         credentials->accept();
-        QCOMPARE(f.secrets.read(SecretKeys::clientId()), QStringLiteral("gui-client"));
+        QCOMPARE(f.secrets.stored(SecretKeys::clientId()), QStringLiteral("gui-client"));
 
         f.server.setAccountEmail(QStringLiteral("carol@example.com"));
         f.server.setAccountName(QStringLiteral("Carol Example"));
@@ -510,8 +510,8 @@ private Q_SLOTS:
 
         // the dialog explains where the values are found in the Google Cloud console
         apiClient->trigger();
+        QTRY_VERIFY(window.findChild<CredentialsDialog*>()); // after the wallet is open
         auto* dialog = window.findChild<CredentialsDialog*>();
-        QVERIFY(dialog);
         QCOMPARE(dialog->windowTitle(), QStringLiteral("Google API Client"));
         const QString help = child<QLabel>(dialog, "credentialsHelp")->text();
         // create a project -> enable the Drive API -> Create credentials -> for the Drive API -> scopes
@@ -577,8 +577,8 @@ private Q_SLOTS:
             = QStringLiteral("the KDE wallet was closed or locked after the application opened it");
 
         window.findChild<QAction*>(QStringLiteral("actionApiClient"))->trigger();
+        QTRY_VERIFY(window.findChild<CredentialsDialog*>()); // after the wallet is open
         auto* dialog = window.findChild<CredentialsDialog*>();
-        QVERIFY(dialog);
         child<QLineEdit>(dialog, "clientId")->setText(QStringLiteral("some-id"));
         // the error is also shown in a message box, once the dialog is closed
         answerNextMessageBox(QDialogButtonBox::Ok);
@@ -602,6 +602,7 @@ private Q_SLOTS:
         f.secrets.failWrites = false;
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         window.findChild<QAction*>(QStringLiteral("actionApiClient"))->trigger();
+        QTRY_VERIFY(window.findChild<CredentialsDialog*>()); // after the wallet is open
         dialog = window.findChildren<CredentialsDialog*>().last();
         child<QLineEdit>(dialog, "clientId")->setText(QStringLiteral("some-id"));
         dialog->accept();

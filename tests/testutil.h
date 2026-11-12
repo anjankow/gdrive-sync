@@ -1,5 +1,8 @@
 #pragma once
 
+#include <KConfig>
+#include <KConfigGroup>
+
 #include "appcore.h"
 #include "logger.h"
 #include "mock/mockgoogleserver.h"
@@ -133,6 +136,7 @@ struct Fixture {
                 return !systemctlFails;
             });
         core->setRetryBaseDelayMs(5);
+        core->setSecretsLingerMs(20);
         QObject::connect(core.get(), &gds::AppCore::deletionsPending, core.get(),
             [this](const QString&, const QStringList& local, const QStringList& remote) {
                 ++deletionQuestions;
@@ -159,14 +163,42 @@ struct Fixture {
         return (spy.count() > 0 || spy.wait(5000)) && spy.first().at(0).toBool();
     }
 
-    /// Starts the core already signed in (refresh token present in the wallet).
+    /// Opens the secret store through the core, as the GUI does for an action.
+    gds::Lease openSecrets()
+    {
+        gds::Lease result;
+        bool done = false;
+        core->requestSecrets(core.get(), [&](const gds::Lease& lease, const QString&) {
+            result = lease;
+            done = true;
+        });
+        (void)QTest::qWaitFor([&done]() { return done; }, 5000);
+        return result;
+    }
+
+    /// Saves the Google API client as the credentials dialog does.
+    bool setClient(const QString& id, const QString& secret, QString* error = nullptr)
+    {
+        const gds::Lease lease = openSecrets();
+        return lease && core->setClientCredentials(id, secret, error);
+    }
+
+    /// Starts the core already signed in: account in the settings, refresh
+    /// token in the (closed) wallet.
     bool startLoggedIn(gds::SyncDirection direction = gds::SyncDirection::TwoWay)
     {
-        secrets.open();
-        QCoreApplication::processEvents();
-        secrets.write(gds::SecretKeys::clientId(), QStringLiteral("test-client"));
-        secrets.write(gds::SecretKeys::clientSecret(), QStringLiteral("test-secret"));
-        secrets.write(gds::SecretKeys::refreshToken(), server.issueRefreshToken());
+        secrets.preset(gds::SecretKeys::clientId(), QStringLiteral("test-client"));
+        secrets.preset(gds::SecretKeys::clientSecret(), QStringLiteral("test-secret"));
+        secrets.preset(gds::SecretKeys::refreshToken(), server.issueRefreshToken());
+        {
+            KConfig config(paths().configFile, KConfig::SimpleConfig);
+            // as stored by the sign-in
+            KConfigGroup account = config.group("Account");
+            account.writeEntry("email", server.accountEmail());
+            account.writeEntry("name", server.accountName());
+            account.writeEntry("photo", server.accountPhotoLink());
+            config.group("Client").writeEntry("configured", true);
+        }
         createCore();
         if (!initialize() || !core->isLoggedIn())
             return false;

@@ -1,5 +1,5 @@
 [Global]
-IconName=folder-cloud
+IconName=io.github.anjankow.gdrivesync
 Comment=Google Drive Sync
 Name=Google Drive Sync
 

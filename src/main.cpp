@@ -85,7 +85,8 @@ int main(int argc, char** argv)
     about.setLicenseText(QStringLiteral("MIT License. See the LICENSE file of the project."));
     about.setDesktopFileName(QStringLiteral("io.github.anjankow.gdrivesync"));
     KAboutData::setApplicationData(about);
-    QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("folder-cloud")));
+    QApplication::setWindowIcon(QIcon::fromTheme(
+        QStringLiteral("io.github.anjankow.gdrivesync"), QIcon(QStringLiteral(":/icons/gdrive-sync.png"))));
 
     QCommandLineParser parser;
     about.setupCommandLine(&parser);
