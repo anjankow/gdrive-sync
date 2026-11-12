@@ -12,14 +12,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  DEPS: >-
-    build-essential cmake ninja-build extra-cmake-modules gettext
-    qtbase5-dev
-    libkf5wallet-dev libkf5config-dev libkf5coreaddons-dev libkf5i18n-dev
-    libkf5notifications-dev libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev
-    xvfb dbus-daemon dbus-x11
-
 jobs:
   build-and-test:
     name: Build and test (${{ matrix.compiler }})
@@ -30,10 +22,10 @@ jobs:
         compiler: [gcc, clang]
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $DEPS clang
+      - uses: ./.github/actions/setup
+        with:
+          extra-packages: ${{ matrix.compiler == 'clang' && 'clang desktop-file-utils' || 'desktop-file-utils' }}
+          ccache-key: build-${{ matrix.compiler }}
       - name: Configure
         run: |
           if [ "${{ matrix.compiler }}" = clang ]; then export CC=clang CXX=clang++; fi
@@ -45,19 +37,16 @@ jobs:
       - name: Install (staging)
         run: DESTDIR="$PWD/stage" cmake --install build
       - name: Validate desktop file
-        run: |
-          sudo apt-get install -y --no-install-recommends desktop-file-utils
-          desktop-file-validate data/io.github.anjankow.gdrivesync.desktop
+        run: desktop-file-validate data/io.github.anjankow.gdrivesync.desktop
 
   sanitizers:
     name: ASan + UBSan
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $DEPS
+      - uses: ./.github/actions/setup
+        with:
+          ccache-key: sanitizers
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DGDS_WERROR=ON -DGDS_SANITIZE=ON
       - name: Build
@@ -73,18 +62,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $DEPS clang clang-format clang-tidy
+      - uses: ./.github/actions/setup
+        with:
+          extra-packages: clang clang-format clang-tidy
       - name: Check formatting
         run: |
           clang-format --version
           find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
       - name: Configure
-        run: CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+        run: CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=OFF
       - name: Generate moc files
-        run: cmake --build build
+        # clang-tidy only needs the generated sources, not a full build
+        run: >-
+          cmake --build build --target
+          gdrivesync-core_autogen gdrivesync-kde_autogen gdrivesync-gui_autogen gdrive-sync_autogen
       - name: clang-tidy
         run: run-clang-tidy -quiet -p build "$PWD/src/.*\.cpp$"
 
@@ -98,10 +89,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $DEPS dpkg-dev
+      - uses: ./.github/actions/setup
+        with:
+          extra-packages: dpkg-dev
       - name: Determine version
         id: version
         run: |

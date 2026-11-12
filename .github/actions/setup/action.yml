@@ -1,0 +1,65 @@
+name: Set up build environment
+description: >-
+  Installs the build dependencies. Downloaded packages and compiler output are
+  cached so that a slow package mirror or a full rebuild does not slow CI down.
+
+inputs:
+  extra-packages:
+    description: Additional apt packages for this job
+    required: false
+    default: ""
+  ccache-key:
+    description: Name of the compiler cache of this job; empty disables ccache
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Restore downloaded packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/apt-archives
+        key: apt-ubuntu-24.04-${{ hashFiles('.github/actions/setup/action.yml') }}-${{ inputs.extra-packages }}-${{ inputs.ccache-key != '' }}
+        restore-keys: |
+          apt-ubuntu-24.04-${{ hashFiles('.github/actions/setup/action.yml') }}-
+          apt-ubuntu-24.04-
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        PACKAGES: >-
+          build-essential cmake ninja-build extra-cmake-modules gettext
+          qtbase5-dev
+          libkf5wallet-dev libkf5config-dev libkf5coreaddons-dev libkf5i18n-dev
+          libkf5notifications-dev libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev
+          xvfb dbus-daemon dbus-x11
+          ${{ inputs.extra-packages }}
+          ${{ inputs.ccache-key != '' && 'ccache' || '' }}
+      run: |
+        # rebuilding the manual page index after every install is slow and useless here
+        sudo rm -f /var/lib/man-db/auto-update
+        archives="$HOME/.cache/apt-archives"
+        mkdir -p "$archives/partial"
+        sudo apt-get update
+        # packages already in the cache are not downloaded again
+        sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$archives" $PACKAGES
+        sudo chown -R "$(id -u):$(id -g)" "$archives"
+        rm -f "$archives/lock"
+
+    - name: Restore compiler cache
+      if: inputs.ccache-key != ''
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ inputs.ccache-key }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ inputs.ccache-key }}-
+
+    - name: Configure compiler cache
+      if: inputs.ccache-key != ''
+      shell: bash
+      run: |
+        echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=400M" >> "$GITHUB_ENV"
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
