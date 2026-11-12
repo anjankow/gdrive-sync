@@ -121,7 +121,7 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     m_folders->setMinimumHeight(220);
     foldersLayout->addWidget(m_folders);
     auto* folderButtons = new QHBoxLayout;
-    m_add = button(QStringLiteral("folder-new"), i18n("Add Folder…"), "addButton", foldersBox);
+    m_add = button(QStringLiteral("folder-new"), i18n("Add Folder"), "addButton", foldersBox);
     m_unmount = button(QStringLiteral("edit-delete"), i18n("Unmount"), "unmountButton", foldersBox);
     m_open = button(
         QStringLiteral("document-open-folder"), i18n("Open in File Manager"), "openButton", foldersBox);

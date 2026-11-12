@@ -49,7 +49,7 @@ that already exist in your Drive.
 
 1. **Sign In** opens the browser. After the sign-in choose the sync direction (two-way, Drive to local, or
    local to Drive). It applies to all folders until you sign out.
-2. **Add Folder…**: pick a Drive folder and an empty local destination.
+2. **Add Folder**: pick a Drive folder and an empty local destination.
 3. **Sync Selected** / **Sync All**.
 4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.

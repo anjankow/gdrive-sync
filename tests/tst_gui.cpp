@@ -488,16 +488,37 @@ private Q_SLOTS:
         dialog->reject();
     }
 
-    void noLabelOfTheAccountAreaEndsWithAnEllipsis()
+    void noButtonLabelContainsDots()
     {
         Fixture f;
-        f.createCore();
+        QVERIFY(f.startLoggedIn());
         MainWindow window(f.core.get());
-        QVERIFY(f.initialize());
-        auto* settings = child<QToolButton>(&window, "settingsButton");
-        for (const QAction* a : settings->menu()->actions())
-            QVERIFY2(!a->text().contains(QChar(0x2026)) && !a->text().contains(QStringLiteral("...")),
-                qPrintable(a->text()));
+        window.show();
+        AddFolderDialog addFolder(f.core.get());
+        CredentialsDialog credentials {QString(), QString()};
+        AutoSyncDialog autoSync(false, 0);
+        DirectionDialog direction;
+        DeletionDialog deletions(QStringLiteral("Docs"), {QStringLiteral("a")}, {QStringLiteral("b")});
+        ConflictDialog conflicts(QStringLiteral("Docs"), {{QStringLiteral("a"), ConflictKind::BothModified}});
+
+        int checked = 0;
+        const auto check = [&checked](const QString& text) {
+            ++checked;
+            QVERIFY2(!text.contains(QLatin1Char('.')) && !text.contains(QChar(0x2026)), qPrintable(text));
+        };
+        const QList<QWidget*> roots {
+            &window, &addFolder, &credentials, &autoSync, &direction, &deletions, &conflicts};
+        for (QWidget* root : roots) {
+            const auto buttons = root->findChildren<QAbstractButton*>();
+            for (const QAbstractButton* b : buttons)
+                check(b->text());
+            const auto actions = root->findChildren<QAction*>();
+            for (const QAction* a : actions) // menu entries behave like buttons
+                check(a->text());
+        }
+        QVERIFY(checked > 20);
+        QCOMPARE(window.findChild<QPushButton*>(QStringLiteral("addButton"))->text(),
+            QStringLiteral("Add Folder"));
     }
 
     // ---------------------------------------------------------------- layout

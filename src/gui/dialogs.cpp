@@ -191,7 +191,7 @@ AddFolderDialog::AddFolderDialog(AppCore* core, QWidget* parent)
     m_path = new QLineEdit(this);
     m_path->setObjectName(QStringLiteral("localPath"));
     auto* browseButton
-        = new QPushButton(QIcon::fromTheme(QStringLiteral("document-open-folder")), i18n("Browse…"), this);
+        = new QPushButton(QIcon::fromTheme(QStringLiteral("document-open-folder")), i18n("Browse"), this);
     row->addWidget(m_path, 1);
     row->addWidget(browseButton);
     layout->addLayout(row);
