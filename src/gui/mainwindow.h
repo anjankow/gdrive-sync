@@ -46,6 +46,7 @@ private:
     void syncSelected();
     void syncAll();
     void editAutoSync();
+    void editLogLocation();
     void confirmSignOut();
     void onProgress(const gds::SyncProgress& progress);
     void onConflicts(const QString& folderId, const QVector<gds::ConflictInfo>& conflicts);
@@ -64,6 +65,7 @@ private:
     QToolButton* m_settings;
     QAction* m_apiClient;
     QAction* m_autoSyncAction;
+    QAction* m_logLocation;
     QNetworkAccessManager* m_nam;
     QString m_avatarUrl;
     QTreeWidget* m_folders;

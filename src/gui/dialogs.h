@@ -45,6 +45,17 @@ private:
     QSpinBox* m_interval;
 };
 
+/// Folder of the application's log file.
+class LogLocationDialog : public QDialog {
+    Q_OBJECT
+public:
+    LogLocationDialog(const QString& directory, const QString& defaultDirectory, QWidget* parent = nullptr);
+    QString directory() const;
+
+private:
+    QLineEdit* m_path;
+};
+
 /// Asked once after sign-in; valid until sign-out.
 class DirectionDialog : public QDialog {
     Q_OBJECT

@@ -5,6 +5,7 @@ add_library(gdrivesync-core STATIC
     format.cpp
     http.cpp
     localscanner.cpp
+    logger.cpp
     oauthflow.cpp
     pkce.cpp
     planner.cpp

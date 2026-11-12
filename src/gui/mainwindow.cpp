@@ -103,6 +103,9 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     m_autoSyncAction
         = settingsMenu->addAction(QIcon::fromTheme(QStringLiteral("chronometer")), i18n("Automatic Sync"));
     m_autoSyncAction->setObjectName(QStringLiteral("actionAutoSync"));
+    m_logLocation
+        = settingsMenu->addAction(QIcon::fromTheme(QStringLiteral("text-x-log")), i18n("Log Location"));
+    m_logLocation->setObjectName(QStringLiteral("actionLogLocation"));
     m_settings->setMenu(settingsMenu);
     accountRow->addWidget(m_settings);
     layout->addLayout(accountRow);
@@ -183,6 +186,7 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_signOut, &QAction::triggered, this, &MainWindow::confirmSignOut);
     connect(m_apiClient, &QAction::triggered, this, &MainWindow::editCredentials);
     connect(m_autoSyncAction, &QAction::triggered, this, &MainWindow::editAutoSync);
+    connect(m_logLocation, &QAction::triggered, this, &MainWindow::editLogLocation);
     connect(m_add, &QPushButton::clicked, this, &MainWindow::addFolder);
     connect(m_unmount, &QPushButton::clicked, this, &MainWindow::unmountSelected);
     connect(m_open, &QPushButton::clicked, this, [this]() {
@@ -280,13 +284,15 @@ void MainWindow::refreshAccount()
     } else if (m_core->isLoginInProgress()) {
         m_account->setText(i18n("Waiting for the sign-in in your web browser…"));
     } else if (loggedIn) {
-        m_account->setText(i18n("Signed in as %1", m_core->accountEmail()));
+        // who is signed in is shown by the profile picture and its menu
+        m_account->clear();
         m_direction->setText(i18n("Sync direction: %1", directionLabel(m_core->direction())));
     } else {
         m_account->setText(i18n("Not signed in"));
         m_direction->clear();
     }
     m_login->setText(m_core->isLoginInProgress() ? i18n("Cancel Sign-in") : i18n("Sign In"));
+    m_account->setVisible(!m_account->text().isEmpty());
 
     // signed in: the profile picture replaces the sign-in button
     m_login->setVisible(!loggedIn);
@@ -538,6 +544,23 @@ void MainWindow::editAutoSync()
         m_autoSyncBusy = true;
         refreshButtons();
         m_core->setAutoSync(dialog->isEnabledChecked(), dialog->intervalMinutes());
+    });
+    dialog->open();
+}
+
+void MainWindow::editLogLocation()
+{
+    auto* dialog = new LogLocationDialog(m_core->logDirectory(), m_core->defaultLogDirectory(), this);
+    dialog->setObjectName(QStringLiteral("logLocationDialog"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        QString error;
+        if (m_core->setLogDirectory(dialog->directory(), &error)) {
+            log(i18n("Log file: %1", m_core->logFilePath()));
+        } else {
+            log(i18n("The log location could not be changed: %1", error));
+            KMessageBox::error(this, error, i18nc("@title:window", "Log Location"), KMessageBox::Notify);
+        }
     });
     dialog->open();
 }

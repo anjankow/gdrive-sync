@@ -26,6 +26,7 @@ struct AppPaths {
     QString stateDir; ///< per-folder sync state
     QString unitDir; ///< systemd user unit directory
     QString executable; ///< binary started by the automatic sync
+    QString logDir; ///< default folder of the log file
 
     static AppPaths defaults();
 };
@@ -86,6 +87,14 @@ public:
     int autoSyncIntervalMinutes() const;
     void setAutoSync(bool enabled, int intervalMinutes);
 
+    // log file
+    /// Folder that holds gdrive-sync.log (the user's choice or the default below /tmp).
+    QString logDirectory() const;
+    QString defaultLogDirectory() const { return m_paths.logDir; }
+    QString logFilePath() const;
+    /// Moves the log to another folder; an empty path selects the default.
+    bool setLogDirectory(const QString& directory, QString* error = nullptr);
+
     void setRetryBaseDelayMs(int ms) { m_retryBaseMs = ms; }
     std::shared_ptr<TokenSource> tokenSource() const { return m_tokens; }
 
@@ -110,6 +119,8 @@ Q_SIGNALS:
 
 private:
     void onStoreOpened(bool ok);
+    void setupLogging();
+    QString folderLabel(const QString& folderId) const;
     void onTokens(const OAuthTokens& tokens);
     void storeAccountInfo(const AccountInfo& info);
     void refreshAccountInfo();

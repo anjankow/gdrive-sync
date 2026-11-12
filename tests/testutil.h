@@ -1,6 +1,7 @@
 #pragma once
 
 #include "appcore.h"
+#include "logger.h"
 #include "mock/mockgoogleserver.h"
 #include "tokensource.h"
 
@@ -105,6 +106,7 @@ struct Fixture {
         p.stateDir = tmp.path() + QStringLiteral("/state");
         p.unitDir = tmp.path() + QStringLiteral("/systemd/user");
         p.executable = QStringLiteral("/usr/bin/gdrive-sync");
+        p.logDir = tmp.path() + QStringLiteral("/logs");
         return p;
     }
 
@@ -160,6 +162,19 @@ struct Fixture {
             return false;
         core->setDirection(direction);
         return true;
+    }
+
+    /// Content of the application's log file.
+    QString logText() const { return QString::fromUtf8(readFile(gds::Logger::instance().filePath())); }
+    QStringList logLines(const QString& level) const
+    {
+        QStringList out;
+        const QStringList lines = logText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        for (const QString& line : lines) {
+            if (line.section(QLatin1Char(' '), 1, 1) == level)
+                out.append(line.section(QLatin1Char(' '), 2).trimmed());
+        }
+        return out;
     }
 
     QString localDir(const QString& name) const { return tmp.path() + QStringLiteral("/local/") + name; }

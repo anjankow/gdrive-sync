@@ -54,6 +54,9 @@ that already exist in your Drive.
 4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.
 
+5. **Settings → Log Location**: folder of the log file `gdrive-sync.log`. The default is
+   `/tmp/gdrive-sync-<user>`.
+
 While you are signed in, your profile picture replaces the **Sign In** button. Clicking it shows your name and
 e-mail address and the **Sign Out** entry.
 
@@ -65,6 +68,20 @@ Behaviour worth knowing:
 - Google Docs, Sheets and Slides have no file content and are skipped.
 - **Unmount** deletes the local copy of that folder. Google Drive is not touched.
 - **Sign Out** revokes the sign-in at Google and forgets the folder list and the timer. Local files stay.
+
+### Log file
+
+Every event is written with a timestamp and a severity:
+
+| Severity | Events |
+|---|---|
+| `INFO` | Sign-in, sign-out and configuration changes (API client, direction, folders, automatic sync, log location) |
+| `DEBUG` | File syncs: each downloaded, uploaded, deleted or created item, and start and end of a sync |
+| `WARN` | Sync errors, failed sign-ins, a rejected stored sign-in |
+| `ERROR` | Unexpected application errors (wallet not available, systemd refusing the timer, unusable log folder) |
+
+The log folder is created readable by you only. The file is kept below 5 MB; one previous file is kept as
+`gdrive-sync.log.1`. Tokens and the client secret are never logged.
 
 `gdrive-sync --sync` runs one unattended sync of all folders and exits (this is what the timer starts).
 
@@ -95,6 +112,7 @@ The tests run against an in-process mock of the Google OAuth and Drive v3 endpoi
 | Progress bar and synced/remaining bytes | `tst_progress`, `tst_gui` |
 | Folder appears in Dolphin (Places) | `tst_places` |
 | Window always responsive | `tst_responsiveness` |
+| Log file with severities, configurable location | `tst_logging`, `tst_gui` |
 | Drive REST client (paging, retries, resumable upload) | `tst_driveclient` |
 
 ### Live tests against Google Drive

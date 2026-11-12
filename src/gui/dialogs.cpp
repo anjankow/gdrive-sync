@@ -33,20 +33,21 @@ CredentialsDialog::CredentialsDialog(const QString& clientId, const QString& cli
 {
     setWindowTitle(i18nc("@title:window", "Google API Client"));
     auto* layout = new QVBoxLayout(this);
-    // Where the two values are found in the Google Cloud console
+    // How to obtain the two values in the Google Cloud console
     // (https://developers.google.com/workspace/guides/create-credentials).
     auto* intro = new QLabel(
-        i18n(
-            "<p>Where to find the client ID and client secret:</p>"
-            "<ol>"
-            "<li>Open <a href=\"https://console.cloud.google.com/auth/clients\">console.cloud.google.com</a> "
-            "and select your project.</li>"
-            "<li>Go to <b>Menu &gt; Google Auth platform &gt; Clients</b>.</li>"
-            "<li>Click your client of type <b>Desktop app</b>, or create one with <b>Create Client</b>.</li>"
-            "<li>Copy <b>Client ID</b> and <b>Client secret</b> from the client's page.</li>"
-            "</ol>"
-            "<p>The Google Drive API must be enabled for the project. The values are stored in the KDE "
-            "wallet.</p>"),
+        i18n("<p>How to get the client ID and client secret:</p>"
+             "<ol>"
+             "<li>Create a Google Cloud project at "
+             "<a href=\"https://console.cloud.google.com/projectcreate\">console.cloud.google.com</a>.</li>"
+             "<li>Enable the <b>Google Drive API</b> for the project.</li>"
+             "<li>On the API page click <b>Create credentials</b> and choose <b>Google Drive API</b> "
+             "with <b>User data</b>.</li>"
+             "<li>Add the necessary scope <b>https://www.googleapis.com/auth/drive</b>.</li>"
+             "<li>Choose the application type <b>Desktop app</b>, create the client and copy its "
+             "<b>Client ID</b> and <b>Client secret</b>.</li>"
+             "</ol>"
+             "<p>The values are stored in the KDE wallet.</p>"),
         this);
     intro->setObjectName(QStringLiteral("credentialsHelp"));
     intro->setTextFormat(Qt::RichText);
@@ -126,6 +127,59 @@ bool AutoSyncDialog::isEnabledChecked() const
 int AutoSyncDialog::intervalMinutes() const
 {
     return m_interval->value();
+}
+
+// ---------------------------------------------------------------- log location
+
+LogLocationDialog::LogLocationDialog(
+    const QString& directory, const QString& defaultDirectory, QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle(i18nc("@title:window", "Log Location"));
+    auto* layout = new QVBoxLayout(this);
+    auto* intro = new QLabel(
+        i18n("Folder for the log file <b>%1</b>. Sign-ins and configuration changes are logged as INFO, "
+             "file syncs as DEBUG, sync errors as WARN and unexpected application errors as ERROR.",
+            QStringLiteral("gdrive-sync.log")),
+        this);
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto* row = new QHBoxLayout;
+    m_path = new QLineEdit(directory, this);
+    m_path->setObjectName(QStringLiteral("logDirectory"));
+    auto* browse
+        = new QPushButton(QIcon::fromTheme(QStringLiteral("document-open-folder")), i18n("Browse"), this);
+    auto* reset = new QPushButton(i18n("Default"), this);
+    reset->setObjectName(QStringLiteral("logDirectoryDefault"));
+    reset->setToolTip(defaultDirectory);
+    row->addWidget(m_path, 1);
+    row->addWidget(browse);
+    row->addWidget(reset);
+    layout->addLayout(row);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(buttons);
+    QPushButton* ok = buttons->button(QDialogButtonBox::Ok);
+    const auto update = [this, ok]() { ok->setEnabled(QDir::isAbsolutePath(m_path->text().trimmed())); };
+    connect(m_path, &QLineEdit::textChanged, this, update);
+    update();
+    connect(reset, &QPushButton::clicked, this,
+        [this, defaultDirectory]() { m_path->setText(defaultDirectory); });
+    connect(browse, &QPushButton::clicked, this, [this]() {
+        auto* dialog = new QFileDialog(this, i18nc("@title:window", "Select the Log Folder"), m_path->text());
+        dialog->setFileMode(QFileDialog::Directory);
+        dialog->setOption(QFileDialog::ShowDirsOnly);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dialog, &QFileDialog::fileSelected, m_path, &QLineEdit::setText);
+        dialog->open();
+    });
+    resize(560, sizeHint().height());
+}
+
+QString LogLocationDialog::directory() const
+{
+    return m_path->text().trimmed();
 }
 
 // ------------------------------------------------------------------ direction

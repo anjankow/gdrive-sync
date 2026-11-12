@@ -360,7 +360,14 @@ private Q_SLOTS:
         QSignalSpy ok(f.core.get(), &AppCore::loginSucceeded);
         QTest::mouseClick(login, Qt::LeftButton);
         QVERIFY(ok.wait(10000));
-        QCOMPARE(account->text(), QStringLiteral("Signed in as carol@example.com"));
+        // who is signed in is shown by the profile picture's menu, not by a label
+        QVERIFY(!account->isVisible());
+        QVERIFY(child<QLabel>(avatar->menu(), "accountMenuInfo")
+                    ->text()
+                    .contains(QStringLiteral("carol@example.com")));
+        const auto labels = window.findChildren<QLabel*>();
+        for (const QLabel* label : labels)
+            QVERIFY2(!label->text().contains(QStringLiteral("Signed in as")), qPrintable(label->text()));
 
         // the direction is asked right after the sign-in
         auto* direction = child<DirectionDialog>(&window, "directionDialog");
@@ -387,7 +394,9 @@ private Q_SLOTS:
         ok.clear();
         QTest::mouseClick(login, Qt::LeftButton);
         QVERIFY(ok.wait(10000));
-        QCOMPARE(account->text(), QStringLiteral("Signed in as dave@example.com"));
+        QTRY_VERIFY(child<QLabel>(avatar->menu(), "accountMenuInfo")
+                        ->text()
+                        .contains(QStringLiteral("dave@example.com")));
         QTRY_VERIFY(window.findChildren<DirectionDialog*>().size() >= 1); // asked again for the new session
     }
 
@@ -462,8 +471,9 @@ private Q_SLOTS:
         QStringList entries;
         for (const QAction* a : settings->menu()->actions())
             entries.append(a->text());
-        QCOMPARE(
-            entries, (QStringList {QStringLiteral("Google API Client"), QStringLiteral("Automatic Sync")}));
+        QCOMPARE(entries,
+            (QStringList {QStringLiteral("Google API Client"), QStringLiteral("Automatic Sync"),
+                QStringLiteral("Log Location")}));
         // these are no longer part of the main window itself
         QVERIFY(!child<QWidget>(&window, "credentialsButton"));
         QVERIFY(!child<QWidget>(&window, "autoSyncCheck"));
@@ -479,10 +489,18 @@ private Q_SLOTS:
         QVERIFY(dialog);
         QCOMPARE(dialog->windowTitle(), QStringLiteral("Google API Client"));
         const QString help = child<QLabel>(dialog, "credentialsHelp")->text();
+        // create a project -> enable the Drive API -> Create credentials -> for the Drive API -> scopes
+        const QStringList steps {QStringLiteral("Create a Google Cloud project"),
+            QStringLiteral("Enable the <b>Google Drive API</b>"), QStringLiteral("Create credentials"),
+            QStringLiteral("choose <b>Google Drive API</b>"),
+            QStringLiteral("https://www.googleapis.com/auth/drive"), QStringLiteral("Desktop app")};
+        int position = -1;
+        for (const QString& step : steps) {
+            const int found = help.indexOf(step, position + 1);
+            QVERIFY2(found > position, qPrintable(step)); // present and in this order
+            position = found;
+        }
         QVERIFY(help.contains(QStringLiteral("console.cloud.google.com")));
-        QVERIFY(help.contains(QStringLiteral("Google Auth platform")));
-        QVERIFY(help.contains(QStringLiteral("Clients")));
-        QVERIFY(help.contains(QStringLiteral("Desktop app")));
         QVERIFY(help.contains(QStringLiteral("Client ID")));
         QVERIFY(help.contains(QStringLiteral("Client secret")));
         dialog->reject();
@@ -498,6 +516,7 @@ private Q_SLOTS:
         CredentialsDialog credentials {QString(), QString()};
         AutoSyncDialog autoSync(false, 0);
         DirectionDialog direction;
+        LogLocationDialog logLocation(QStringLiteral("/tmp/x"), QStringLiteral("/tmp/y"));
         DeletionDialog deletions(QStringLiteral("Docs"), {QStringLiteral("a")}, {QStringLiteral("b")});
         ConflictDialog conflicts(QStringLiteral("Docs"), {{QStringLiteral("a"), ConflictKind::BothModified}});
 
@@ -507,7 +526,7 @@ private Q_SLOTS:
             QVERIFY2(!text.contains(QLatin1Char('.')) && !text.contains(QChar(0x2026)), qPrintable(text));
         };
         const QList<QWidget*> roots {
-            &window, &addFolder, &credentials, &autoSync, &direction, &deletions, &conflicts};
+            &window, &addFolder, &credentials, &autoSync, &direction, &logLocation, &deletions, &conflicts};
         for (QWidget* root : roots) {
             const auto buttons = root->findChildren<QAbstractButton*>();
             for (const QAbstractButton* b : buttons)
@@ -519,6 +538,37 @@ private Q_SLOTS:
         QVERIFY(checked > 20);
         QCOMPARE(window.findChild<QPushButton*>(QStringLiteral("addButton"))->text(),
             QStringLiteral("Add Folder"));
+    }
+
+    void logLocationIsChosenInTheSettingsMenu()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        // by default the log is written below the temp directory
+        QCOMPARE(f.core->logDirectory(), f.paths().logDir);
+
+        window.findChild<QAction*>(QStringLiteral("actionLogLocation"))->trigger();
+        auto* dialog = child<LogLocationDialog>(&window, "logLocationDialog");
+        QVERIFY(dialog);
+        auto* edit = child<QLineEdit>(dialog, "logDirectory");
+        QCOMPARE(edit->text(), f.paths().logDir);
+        const QString chosen = f.tmp.path() + QStringLiteral("/my-logs");
+        edit->setText(chosen);
+        dialog->accept();
+        QCOMPARE(f.core->logDirectory(), chosen);
+        QCOMPARE(f.core->logFilePath(), chosen + QStringLiteral("/gdrive-sync.log"));
+        QVERIFY(QFile::exists(chosen + QStringLiteral("/gdrive-sync.log")));
+
+        // "Default" restores the standard location
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        window.findChild<QAction*>(QStringLiteral("actionLogLocation"))->trigger();
+        dialog = window.findChildren<LogLocationDialog*>().last();
+        QTest::mouseClick(child<QPushButton>(dialog, "logDirectoryDefault"), Qt::LeftButton);
+        QCOMPARE(child<QLineEdit>(dialog, "logDirectory")->text(), f.paths().logDir);
+        dialog->accept();
+        QCOMPARE(f.core->logDirectory(), f.paths().logDir);
     }
 
     // ---------------------------------------------------------------- layout

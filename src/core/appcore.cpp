@@ -2,6 +2,7 @@
 
 #include "format.h"
 #include "http.h"
+#include "logger.h"
 #include "tokensource.h"
 
 #include <KConfigGroup>
@@ -38,6 +39,7 @@ AppPaths AppPaths::defaults()
     p.stateDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/state");
     p.unitDir = Scheduler::defaultUnitDir();
     p.executable = QCoreApplication::applicationFilePath();
+    p.logDir = Logger::defaultDirectory();
     return p;
 }
 
@@ -57,7 +59,16 @@ AppCore::AppCore(GoogleEndpoints endpoints, SecretStore* secrets, PlacesIntegrat
     qRegisterMetaType<QVector<gds::DriveItem>>();
     qRegisterMetaType<QVector<gds::SyncResult>>();
     qRegisterMetaType<GdsConflictChoices>();
+    if (m_paths.logDir.isEmpty())
+        m_paths.logDir = Logger::defaultDirectory();
+    QString logError;
+    if (!Logger::instance().setDirectory(logDirectory(), &logError)) {
+        // the configured folder is gone or read-only: fall back to the default
+        Logger::instance().setDirectory(m_paths.logDir);
+        gds::logError(QStringLiteral("Log location %1 cannot be used: %2").arg(logDirectory(), logError));
+    }
     m_folders = new FolderManager(m_config, m_paths.stateDir, places, this);
+    setupLogging();
     connect(m_secrets, &SecretStore::opened, this, &AppCore::onStoreOpened);
     m_thread.setObjectName(QStringLiteral("gdrive-sync-worker"));
     m_thread.start();
@@ -72,6 +83,99 @@ AppCore::~AppCore()
     m_thread.wait();
     // background tasks reference members of this object
     QThreadPool::globalInstance()->waitForDone();
+}
+
+QString AppCore::logDirectory() const
+{
+    const QString chosen = m_config->group("Logging").readEntry("directory", QString());
+    return chosen.isEmpty() ? m_paths.logDir : chosen;
+}
+
+QString AppCore::logFilePath() const
+{
+    return Logger::instance().filePath();
+}
+
+bool AppCore::setLogDirectory(const QString& directory, QString* error)
+{
+    const QString target
+        = directory.trimmed().isEmpty() ? m_paths.logDir : QDir::cleanPath(directory.trimmed());
+    const QString previous = Logger::instance().filePath();
+    if (!Logger::instance().setDirectory(target, error)) {
+        gds::logError(QStringLiteral("Log location %1 cannot be used").arg(target));
+        return false;
+    }
+    KConfigGroup group = m_config->group("Logging");
+    if (target == m_paths.logDir)
+        group.deleteEntry("directory");
+    else
+        group.writeEntry("directory", target);
+    m_config->sync();
+    logInfo(QStringLiteral("Log location changed to %1 (previous log file: %2)")
+                .arg(Logger::instance().filePath(), previous.isEmpty() ? QStringLiteral("none") : previous));
+    return true;
+}
+
+QString AppCore::folderLabel(const QString& folderId) const
+{
+    const FolderConfig* f = m_folders->find(folderId);
+    return f ? QStringLiteral("\"%1\" (%2)").arg(f->driveFolderName, f->localPath) : folderId;
+}
+
+/// Writes the application's events to the log file:
+/// INFO for sign-in/sign-out and configuration changes, DEBUG for file
+/// syncs, WARN for sync errors, ERROR for unexpected application errors.
+void AppCore::setupLogging()
+{
+    connect(this, &AppCore::initialized, this, [this](bool ok, const QString& error) {
+        if (!ok)
+            gds::logError(error);
+        else if (isLoggedIn())
+            logInfo(QStringLiteral("Restored the sign-in of %1").arg(accountEmail()));
+        else
+            logInfo(QStringLiteral("Started; not signed in"));
+    });
+    connect(this, &AppCore::loginSucceeded, this,
+        [this]() { logInfo(QStringLiteral("Signed in as %1").arg(accountEmail())); });
+    connect(this, &AppCore::loginFailed, this,
+        [](const QString& error) { logWarn(QStringLiteral("Sign-in failed: %1").arg(error)); });
+    connect(this, &AppCore::authorizationLost, this,
+        []() { logWarn(QStringLiteral("Google rejected the stored sign-in; a new sign-in is required")); });
+    connect(this, &AppCore::folderSyncStarted, this, [this](const QString& id) {
+        logDebug(QStringLiteral("Sync started: %1, direction %2, %3")
+                     .arg(folderLabel(id), directionLabel(direction()),
+                         m_batchInteractive ? QStringLiteral("manual") : QStringLiteral("automatic")));
+    });
+    connect(this, &AppCore::conflictsFound, this,
+        [this](const QString& id, const QVector<ConflictInfo>& conflicts) {
+            logDebug(QStringLiteral("Sync of %1 asks about %2 conflict(s)")
+                         .arg(folderLabel(id))
+                         .arg(conflicts.size()));
+        });
+    connect(this, &AppCore::deletionsPending, this,
+        [this](const QString& id, const QStringList& local, const QStringList& remote) {
+            logDebug(QStringLiteral("Sync of %1 asks to confirm %2 local and %3 Drive deletion(s)")
+                         .arg(folderLabel(id))
+                         .arg(local.size())
+                         .arg(remote.size()));
+        });
+    connect(this, &AppCore::folderSyncFinished, this, [this](const SyncResult& r) {
+        const QString label = folderLabel(r.folderId);
+        for (const QString& e : r.errors)
+            logWarn(QStringLiteral("Sync error in %1: %2").arg(label, e));
+        for (const QString& s : r.skipped)
+            logDebug(QStringLiteral("Skipped in %1: %2").arg(label, s));
+        const QString summary = QStringLiteral("Sync finished: %1: %2").arg(label, formatResult(r));
+        if (r.status == SyncResult::Failed || r.status == SyncResult::AuthRequired)
+            logWarn(summary);
+        else
+            logDebug(summary);
+    });
+    connect(
+        m_folders, &FolderManager::folderRemoved, this, [](const QString&, bool ok, const QString& error) {
+            if (!ok)
+                gds::logError(QStringLiteral("Unmount: %1").arg(error));
+        });
 }
 
 void AppCore::initialize()
@@ -117,8 +221,13 @@ QString AppCore::clientSecret() const
 
 bool AppCore::setClientCredentials(const QString& clientId, const QString& clientSecret)
 {
-    return m_secrets->write(SecretKeys::clientId(), clientId.trimmed())
+    const bool ok = m_secrets->write(SecretKeys::clientId(), clientId.trimmed())
         && m_secrets->write(SecretKeys::clientSecret(), clientSecret.trimmed());
+    if (ok)
+        logInfo(QStringLiteral("Google API client changed"));
+    else
+        gds::logError(QStringLiteral("The Google API client could not be stored in the KDE wallet"));
+    return ok;
 }
 
 QString AppCore::accountEmail() const
@@ -181,6 +290,7 @@ void AppCore::setDirection(SyncDirection direction)
 {
     m_config->group("Account").writeEntry("direction", int(direction));
     m_config->sync();
+    logInfo(QStringLiteral("Sync direction set to %1").arg(directionLabel(direction)));
     Q_EMIT accountChanged();
 }
 
@@ -196,6 +306,7 @@ void AppCore::login()
         Q_EMIT loginFailed(QStringLiteral("Enter the OAuth client ID of your Google Cloud project first."));
         return;
     }
+    logInfo(QStringLiteral("Sign-in started in the web browser"));
     m_flow = new OAuthFlow(m_endpoints, clientId(), clientSecret(), m_browser, this);
     connect(m_flow, &OAuthFlow::succeeded, this, &AppCore::onTokens);
     connect(m_flow, &OAuthFlow::failed, this, [this](const QString& error) {
@@ -263,6 +374,8 @@ void AppCore::logout()
     destroyEngine();
     m_queue.clear();
 
+    logInfo(QStringLiteral("Signed out of %1; the folder list and the automatic sync were removed")
+                .arg(accountEmail()));
     const QString refresh = m_secrets->read(SecretKeys::refreshToken());
     m_secrets->remove(SecretKeys::refreshToken());
     m_tokens.reset();
@@ -384,8 +497,11 @@ bool AppCore::startJobs(const QVector<FolderConfig>& folders, bool interactive)
         m_lock = std::make_unique<QLockFile>(m_paths.stateDir + QStringLiteral("/sync.lock"));
         m_lock->setStaleLockTime(0);
     }
-    if (!m_lock->tryLock(0))
-        return false; // another instance (e.g. the automatic sync) is syncing right now
+    if (!m_lock->tryLock(0)) {
+        // another instance (e.g. the automatic sync) is syncing right now
+        logWarn(QStringLiteral("Sync not started: another gdrive-sync process is syncing"));
+        return false;
+    }
     m_engine->resetCancel();
     m_results.clear();
     m_queue.clear();
@@ -454,8 +570,10 @@ void AppCore::onEngineFinished(const SyncResult& result)
 
 void AppCore::cancelSync()
 {
-    if (m_engine && m_syncing)
+    if (m_engine && m_syncing) {
+        logDebug(QStringLiteral("Sync cancel requested"));
         m_engine->requestCancel();
+    }
 }
 
 void AppCore::resolveConflicts(const QHash<QString, ConflictChoice>& choices)
@@ -466,6 +584,8 @@ void AppCore::resolveConflicts(const QHash<QString, ConflictChoice>& choices)
 
 void AppCore::confirmDeletions(bool proceed)
 {
+    logDebug(proceed ? QStringLiteral("Deletions confirmed")
+                     : QStringLiteral("Deletions declined: sync cancelled"));
     if (m_engine)
         m_engine->provideDeletionDecision(proceed);
 }
@@ -494,7 +614,15 @@ void AppCore::setAutoSync(bool enabled, int intervalMinutes)
                 scheduler.disable(&error);
             return error;
         },
-        [this](const QString& error) { Q_EMIT autoSyncChanged(error.isEmpty(), error); });
+        [this, enabled, intervalMinutes](const QString& error) {
+            if (!error.isEmpty())
+                gds::logError(QStringLiteral("Automatic sync could not be changed: %1").arg(error));
+            else if (enabled)
+                logInfo(QStringLiteral("Automatic sync enabled, every %1 minutes").arg(intervalMinutes));
+            else
+                logInfo(QStringLiteral("Automatic sync disabled"));
+            Q_EMIT autoSyncChanged(error.isEmpty(), error);
+        });
 }
 
 } // namespace gds

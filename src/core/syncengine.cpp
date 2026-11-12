@@ -1,6 +1,7 @@
 #include "syncengine.h"
 
 #include "localscanner.h"
+#include "logger.h"
 #include "planner.h"
 #include "syncstate.h"
 #include "tokensource.h"
@@ -197,6 +198,7 @@ QString SyncEngine::ensureRemoteDir(Context& ctx, const QString& path, DriveErro
         return {};
     }
     ctx.remoteDirIds.insert(path, created.value.id);
+    logDebug(QStringLiteral("Created Drive folder %1").arg(path));
     StateEntry e;
     e.isDir = true;
     e.driveId = created.value.id;
@@ -385,6 +387,8 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
     case ActionType::RenameLocal: {
         if (!QFile::rename(abs, ctx.abs(a.newPath)))
             result.errors.append(QStringLiteral("%1: cannot create the conflict copy").arg(a.path));
+        else
+            logDebug(QStringLiteral("Kept the local version as %1").arg(ctx.abs(a.newPath)));
         return true;
     }
     case ActionType::MkdirLocal: {
@@ -396,6 +400,7 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         e.isDir = true;
         e.driveId = ctx.remote.value(a.path).id;
         state.insert(a.path, e);
+        logDebug(QStringLiteral("Created local folder %1").arg(abs));
         return true;
     }
     case ActionType::MkdirRemote: {
@@ -473,6 +478,7 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         state.insert(a.path, s);
         ++result.downloaded;
         result.bytesTransferred += info.size();
+        logDebug(QStringLiteral("Downloaded %1 (%2 bytes)").arg(abs).arg(info.size()));
         transferDone();
         return true;
     }
@@ -507,6 +513,7 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         state.insert(a.path, s);
         ++result.uploaded;
         result.bytesTransferred += before.size();
+        logDebug(QStringLiteral("Uploaded %1 (%2 bytes)").arg(abs).arg(before.size()));
         transferDone();
         return true;
     }
@@ -527,6 +534,7 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         if (ok) {
             state.remove(a.path);
             ++result.deletedLocal;
+            logDebug(QStringLiteral("Deleted locally %1").arg(abs));
         }
         return true;
     }
@@ -539,6 +547,7 @@ bool SyncEngine::execute(Context& ctx, const SyncAction& a)
         }
         state.remove(a.path);
         ++result.deletedRemote;
+        logDebug(QStringLiteral("Moved to the Drive trash: %1").arg(a.path));
         return true;
     }
     }
