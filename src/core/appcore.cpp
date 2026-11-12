@@ -45,7 +45,9 @@ AppPaths AppPaths::defaults()
     p.configFile = QStringLiteral("gdrive-syncrc");
     p.stateDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/state");
     p.unitDir = Scheduler::defaultUnitDir();
-    p.executable = QCoreApplication::applicationFilePath();
+    // In an AppImage the binary runs from a temporary mount; the timer must start the AppImage itself.
+    const QString appImage = qEnvironmentVariable("APPIMAGE");
+    p.executable = appImage.isEmpty() ? QCoreApplication::applicationFilePath() : appImage;
     p.logDir = Logger::defaultDirectory();
     return p;
 }

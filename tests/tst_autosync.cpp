@@ -10,6 +10,20 @@ using namespace gdstest;
 class TestAutoSync : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void timerStartsTheAppImageWhenRunFromOne()
+    {
+        // an AppImage runs its binary from a temporary mount that is gone after it exits
+        QCOMPARE(AppPaths::defaults().executable, QCoreApplication::applicationFilePath());
+        qputenv("APPIMAGE", "/home/me/Apps/gdrive-sync-0.1.0-x86_64.AppImage");
+        QCOMPARE(AppPaths::defaults().executable,
+            QStringLiteral("/home/me/Apps/gdrive-sync-0.1.0-x86_64.AppImage"));
+        qunsetenv("APPIMAGE");
+        const QString unit
+            = Scheduler::serviceUnit(QStringLiteral("/home/me/Apps/gdrive-sync-0.1.0-x86_64.AppImage"));
+        QVERIFY(unit.contains(
+            QStringLiteral("ExecStart=\"/home/me/Apps/gdrive-sync-0.1.0-x86_64.AppImage\" --sync")));
+    }
+
     void unitsAreWellFormed()
     {
         const QString service = Scheduler::serviceUnit(QStringLiteral("/opt/my app/gdrive-sync"));

@@ -9,7 +9,9 @@
 
 #include <QFileInfo>
 #include <QLoggingCategory>
+#include <QProcess>
 #include <QRegularExpression>
+#include <QTemporaryDir>
 
 using namespace gds;
 using namespace gdstest;
@@ -407,6 +409,38 @@ private Q_SLOTS:
         QVERIFY(f.initialize());
         QVERIFY(f.logText().contains(QStringLiteral("new folders set to Drive to local")));
         QVERIFY(f.logText().count(QLatin1Char('\n')) > before);
+    }
+
+    void startedProgramsAndRawLibraryOutputStayOffTheConsole()
+    {
+        QTemporaryDir logs;
+        QProcess probe;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.remove(QStringLiteral("QT_LOGGING_RULES"));
+        probe.setProcessEnvironment(env);
+        probe.start(QStringLiteral(GDS_CONSOLE_PROBE), {logs.path()});
+        QVERIFY(probe.waitForFinished(10000));
+        const QString out = QString::fromLocal8Bit(probe.readAllStandardOutput());
+        const QString err = QString::fromLocal8Bit(probe.readAllStandardError());
+        // only the application's own serious message reaches the terminal
+        QCOMPARE(out, QString());
+        QVERIFY2(err.contains(QStringLiteral("own-critical")), qPrintable(err));
+        QCOMPARE(err.count(QLatin1Char('\n')), 1);
+        // the rest of the application's Qt messages is in the log file
+        const QString log = QString::fromUtf8(readFile(logs.path() + QStringLiteral("/gdrive-sync.log")));
+        QVERIFY(log.contains(QStringLiteral("library-debug")));
+        QVERIFY(log.contains(QStringLiteral("library-warning")));
+
+        // when debugging the libraries, everything is shown as usual
+        env.insert(QStringLiteral("QT_LOGGING_RULES"), QStringLiteral("*.debug=true"));
+        probe.setProcessEnvironment(env);
+        probe.start(QStringLiteral(GDS_CONSOLE_PROBE), {logs.path()});
+        QVERIFY(probe.waitForFinished(10000));
+        const QString all
+            = QString::fromLocal8Bit(probe.readAllStandardOutput() + probe.readAllStandardError());
+        for (const char* text : {"library-raw-stderr", "library-raw-stdout", "library-debug", "child-stdout",
+                 "child-stderr", "own-critical"})
+            QVERIFY2(all.contains(QLatin1String(text)), text);
     }
 
     void libraryOutputStaysOffTheConsole()

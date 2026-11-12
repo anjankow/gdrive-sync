@@ -4,6 +4,7 @@ add_library(gdrivesync-core STATIC
     driveclient.cpp
     foldermanager.cpp
     format.cpp
+    hostenvironment.cpp
     http.cpp
     localscanner.cpp
     logger.cpp

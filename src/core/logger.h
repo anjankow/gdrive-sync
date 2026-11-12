@@ -60,6 +60,15 @@ private:
 /// Returns the handler that was installed before.
 QtMessageHandler installQtMessageRouting(QtMessageHandler console = nullptr);
 
+/// Keeps the terminal for the application's own messages. Programs it starts
+/// (web browser, file manager, KIO workers) inherit stdout and stderr, and
+/// libraries print to stderr directly (e.g. fontconfig): from now on all of
+/// that goes to /dev/null. The critical messages passed on by
+/// installQtMessageRouting() still reach the terminal through a private copy
+/// of stderr. Nothing changes when QT_LOGGING_RULES is set (debugging).
+/// Returns false when the terminal was left as it is.
+bool isolateConsole();
+
 void logDebug(const QString& message);
 void logInfo(const QString& message);
 void logWarn(const QString& message);

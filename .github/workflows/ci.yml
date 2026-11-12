@@ -21,7 +21,7 @@ jobs:
       matrix:
         compiler: [gcc, clang]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           extra-packages: ${{ matrix.compiler == 'clang' && 'clang desktop-file-utils' || 'desktop-file-utils' }}
@@ -43,7 +43,7 @@ jobs:
     name: ASan + UBSan
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           ccache-key: sanitizers
@@ -61,7 +61,7 @@ jobs:
     name: clang-format and clang-tidy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           extra-packages: clang clang-format clang-tidy
@@ -80,13 +80,15 @@ jobs:
         run: run-clang-tidy -quiet -p build "$PWD/src/.*\.cpp$"
 
   package:
-    name: Debian package (amd64, Ubuntu 24.04)
-    # Only for merges to main; the binary matches Ubuntu 24.04 / Qt 5.15 / KF 5.115.
+    name: Debian package for run-latest-build.sh
+    # Only for merges to main: scripts/run-latest-build.sh (and install-deb.sh
+    # build) take this package. Release packages are built by release.yml.
+    # It runs next to the tests: the scripts only take packages from runs
+    # that passed as a whole.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build-and-test, sanitizers, static-analysis]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
@@ -108,7 +110,7 @@ jobs:
           (cd build && cpack -G DEB)
           dpkg-deb --info build/*.deb
           dpkg-deb --contents build/*.deb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gdrive-sync-deb
           path: build/*.deb

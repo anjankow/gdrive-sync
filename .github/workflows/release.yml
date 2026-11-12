@@ -31,7 +31,7 @@ jobs:
         run: |
           echo "::error::Releases are made from main, not from ${{ github.ref_name }}"
           exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Determine version
@@ -54,10 +54,17 @@ jobs:
           cmake --build build
       - name: Test
         run: xvfb-run -a dbus-run-session -- ctest --test-dir build --output-on-failure --timeout 300
-      - name: Build package
+      - name: Build packages
         run: |
+          version="${{ steps.version.outputs.version }}"
           (cd build && cpack -G DEB)
           dpkg-deb --info build/*.deb
+          scripts/build-appimage.sh build "$version"
+          # release files: gdrive-sync-<version>.deb and gdrive-sync-<version>.AppImage
+          mkdir dist
+          mv build/*.deb "dist/gdrive-sync-${version}.deb"
+          mv build/*.AppImage "dist/gdrive-sync-${version}.AppImage"
+          ls -l dist
       - name: Tag and publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,4 +72,4 @@ jobs:
           tag="v${{ steps.version.outputs.version }}"
           git tag "$tag"
           git push origin "$tag"
-          gh release create "$tag" build/*.deb --title "$tag" --generate-notes --verify-tag
+          gh release create "$tag" dist/* --title "$tag" --generate-notes --verify-tag

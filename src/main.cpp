@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDesktopServices>
+#include <QDir>
 #include <QNetworkProxyFactory>
 #include <QTimer>
 
@@ -84,6 +85,12 @@ int main(int argc, char** argv)
         {QStringLiteral("sync"), i18n("Sync all folders once without user interaction and exit.")});
     parser.process(app);
     about.processCommandLine(&parser);
+    // after --help/--version had their say on stdout
+    isolateConsole();
+    // Programs started by the application inherit its working directory. A
+    // directory it may delete (an unmounted folder) or that the user removes
+    // makes them fail; e.g. fontconfig then prints "out of memory".
+    QDir::setCurrent(QDir::homePath());
 
     QNetworkProxyFactory::setUseSystemConfiguration(true);
 
@@ -96,9 +103,10 @@ int main(int argc, char** argv)
     KdePlaces places;
     KdeNotifier notifier;
     AppCore core(GoogleEndpoints(), &secrets, &places, &notifier, AppPaths::defaults(),
-        [](const QUrl& url) { return QDesktopServices::openUrl(url); });
+        [](const QUrl& url) { return ExternalPrograms::openUrl(url); });
     logInfo(QStringLiteral("gdrive-sync %1 started").arg(QStringLiteral(GDS_VERSION)));
     MainWindow window(&core);
+    window.openFolder = [](const QString& path) { ExternalPrograms::openFolder(path); };
     QObject::connect(&service, &KDBusService::activateRequested, &window, [&window]() {
         window.show();
         window.raise();
