@@ -64,7 +64,9 @@ Google Cloud project:
 
 1. **Sign In** with your google account via the browser. Choose the sync direction (two-way, Drive to local,
    or local to Drive). It applies to all folders until you sign out.
-2. **Add Folder**: pick a Drive folder and an empty local destination.
+2. **Add Folder**: pick a Drive folder and a local destination. The destination may already hold files:
+   the first sync uploads them to Drive (two-way and local to Drive; with Drive to local they stay local only).
+   A file that exists on both sides with different content is asked about, in every direction.
 3. **Sync Selected** / **Sync All**.
 4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.
@@ -76,7 +78,8 @@ Google Cloud project:
 - Automatic runs never delete anything and never resolve conflicts. They show a notification, and the next
   manual sync asks you.
 - Google Docs, Sheets and Slides have no file content and are skipped.
-- **Unmount** deletes the local copy of that folder. Google Drive is not touched.
+- **Unmount** deletes the local copy of that folder. For a folder that already held files when it was
+  added, you choose to keep all its local files or delete all of them. Google Drive is not touched.
 - **Sign Out** revokes the sign-in at Google and forgets the folder list and the timer (if automatic sync is enabled). Local files stay.
 
 
@@ -111,7 +114,7 @@ The tests run against an in-process mock of the Google OAuth and Drive v3 endpoi
 |---|---|
 | Sign in, sign out, sign in with another account; secrets only in the wallet | `tst_account`, `tst_gui` |
 | Select a Drive folder (not the whole drive) | `tst_sync`, `tst_folders`, `tst_gui` |
-| Destination must be empty; several independent folders; unmount | `tst_folders`, `tst_gui` |
+| Destination (empty or not); several independent folders; unmount | `tst_folders`, `tst_sync`, `tst_gui` |
 | Sync on request; directions; conflicts | `tst_sync`, `tst_planner` |
 | Automatic sync (systemd timer, unattended run) | `tst_autosync`, `tst_gui` |
 | Deletion warning, cancellable | `tst_deletions`, `tst_gui`, `tst_planner` |

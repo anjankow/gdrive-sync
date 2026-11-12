@@ -296,7 +296,7 @@ SyncResult SyncEngine::doRun(const SyncJob& job)
             }
             const QString suffix
                 = QStringLiteral(" (conflict copy %1)").arg(QDate::currentDate().toString(Qt::ISODate));
-            plan = applyConflictChoices(plan, choices, ctx.local, ctx.remote, suffix);
+            plan = applyConflictChoices(plan, choices, ctx.local, ctx.remote, suffix, job.direction);
         }
         if (plan.hasDeletions()) {
             Q_EMIT deletionsPending(job.folderId, plan.localDeletions(), plan.remoteDeletions());

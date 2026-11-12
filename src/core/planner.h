@@ -17,7 +17,8 @@ SyncPlan buildPlan(const LocalTree& local, const RemoteTree& remote, const State
 /// Replaces the Conflict actions of \p plan according to the user's choices.
 /// Paths without a choice (or with Skip) are dropped from the plan.
 SyncPlan applyConflictChoices(const SyncPlan& plan, const QHash<QString, ConflictChoice>& choices,
-    const LocalTree& local, const RemoteTree& remote, const QString& conflictSuffix);
+    const LocalTree& local, const RemoteTree& remote, const QString& conflictSuffix,
+    SyncDirection direction = SyncDirection::TwoWay);
 
 /// Removes deletions and conflicts (used by unattended runs).
 SyncPlan withoutDeletionsAndConflicts(const SyncPlan& plan, int* droppedDeletions, int* droppedConflicts);

@@ -49,6 +49,7 @@ void FolderManager::load()
         f.localPath = g.readEntry("localPath", QString());
         f.lastSync = g.readEntry("lastSync", QDateTime());
         f.lastStatus = g.readEntry("lastStatus", QString());
+        f.initiallyNonEmpty = g.readEntry("initiallyNonEmpty", false);
         if (!f.driveFolderId.isEmpty() && !f.localPath.isEmpty())
             m_folders.append(f);
     }
@@ -67,6 +68,8 @@ void FolderManager::save()
         g.writeEntry("localPath", f.localPath);
         g.writeEntry("lastSync", f.lastSync);
         g.writeEntry("lastStatus", f.lastStatus);
+        if (f.initiallyNonEmpty)
+            g.writeEntry("initiallyNonEmpty", true);
     }
     root.writeEntry("ids", ids);
     m_writer->save();
@@ -97,8 +100,6 @@ QString FolderManager::validateDestination(const QString& path) const
     if (info.exists()) {
         if (!info.isDir())
             return QStringLiteral("The destination is not a folder.");
-        if (!QDir(clean).isEmpty(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot))
-            return QStringLiteral("The destination folder must be empty.");
         if (!info.isWritable())
             return QStringLiteral("The destination folder is not writable.");
     } else {
@@ -136,6 +137,9 @@ QString FolderManager::addFolder(
     if (!problem.isEmpty())
         return setError(problem);
     const QString clean = normalized(localPath);
+    // its files are synced too: uploaded on the first sync (two-way, local to Drive)
+    const bool nonEmpty = QFileInfo(clean).isDir()
+        && !QDir(clean).isEmpty(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
     if (!QDir().mkpath(clean))
         return setError(QStringLiteral("The destination folder cannot be created."));
 
@@ -144,16 +148,20 @@ QString FolderManager::addFolder(
     f.driveFolderId = driveFolderId;
     f.driveFolderName = driveFolderName;
     f.localPath = clean;
+    f.initiallyNonEmpty = nonEmpty;
     m_folders.append(f);
     save();
     if (m_places)
         m_places->addPlace(clean, driveFolderName);
-    logInfo(QStringLiteral("Folder added: Drive folder \"%1\" mounted at %2").arg(driveFolderName, clean));
+    logInfo(QStringLiteral("Folder added: Drive folder \"%1\" mounted at %2%3")
+                .arg(driveFolderName, clean,
+                    nonEmpty ? QStringLiteral(" (the folder already holds files; they are synced too)")
+                             : QString()));
     Q_EMIT foldersChanged();
     return f.id;
 }
 
-void FolderManager::removeFolder(const QString& id)
+void FolderManager::removeFolder(const QString& id, bool deleteLocalFiles)
 {
     const FolderConfig* found = find(id);
     if (!found) {
@@ -170,8 +178,10 @@ void FolderManager::removeFolder(const QString& id)
     save();
     if (m_places)
         m_places->removePlace(folder.localPath);
-    logInfo(QStringLiteral("Folder unmounted: \"%1\"; deleting the local copy in %2")
-                .arg(folder.driveFolderName, folder.localPath));
+    logInfo(deleteLocalFiles ? QStringLiteral("Folder unmounted: \"%1\"; deleting the local copy in %2")
+                                   .arg(folder.driveFolderName, folder.localPath)
+                             : QStringLiteral("Folder unmounted: \"%1\"; the local files in %2 are kept")
+                                   .arg(folder.driveFolderName, folder.localPath));
     Q_EMIT foldersChanged();
 
     // Deleting a large tree can take long: keep it off the GUI thread.
@@ -183,8 +193,10 @@ void FolderManager::removeFolder(const QString& id)
         Q_EMIT folderRemoved(id, ok,
             ok ? QString() : QStringLiteral("Some files in %1 could not be deleted.").arg(folder.localPath));
     });
-    watcher->setFuture(QtConcurrent::run([path = folder.localPath, stateFilePath]() {
+    watcher->setFuture(QtConcurrent::run([path = folder.localPath, stateFilePath, deleteLocalFiles]() {
         SyncState::removeFile(stateFilePath);
+        if (!deleteLocalFiles)
+            return true;
         QDir dir(path);
         return !dir.exists() || dir.removeRecursively();
     }));

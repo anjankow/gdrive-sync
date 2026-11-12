@@ -108,8 +108,9 @@ public:
     FolderManager* folders() const { return m_folders; }
     /// Lists the sub-folders of a Drive folder ("root" = My Drive) in the background.
     void listDriveFolders(const QString& parentId);
-    /// Unmounts a folder and deletes its local copy. Refused while it is syncing.
-    bool unmountFolder(const QString& id, QString* error = nullptr);
+    /// Unmounts a folder and deletes its local copy (or keeps the local files).
+    /// Refused while it is syncing.
+    bool unmountFolder(const QString& id, QString* error = nullptr, bool deleteLocalFiles = true);
 
     // sync
     bool isSyncing() const { return m_syncing; }

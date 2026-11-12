@@ -19,6 +19,9 @@ struct FolderConfig {
     QString localPath;
     QDateTime lastSync;
     QString lastStatus;
+    /// The local folder already held files when it was added: unmounting
+    /// then lets the user keep the local files.
+    bool initiallyNonEmpty = false;
 };
 
 /// Manages the list of mounted folders. Each folder is independent of the others.
@@ -42,8 +45,9 @@ public:
         QString* error);
 
     /// Unmounts a folder: the local copy is deleted (in a background
-    /// thread), Drive is not touched. Emits folderRemoved() when done.
-    void removeFolder(const QString& id);
+    /// thread) unless \p deleteLocalFiles is false; Drive is not touched.
+    /// Emits folderRemoved() when done.
+    void removeFolder(const QString& id, bool deleteLocalFiles = true);
 
     /// Forgets all folders without deleting local files (used on logout).
     void clear();

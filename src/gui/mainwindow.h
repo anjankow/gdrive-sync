@@ -84,6 +84,7 @@ private:
     QLabel* m_currentFile;
     QPlainTextEdit* m_log;
     bool m_unmounting = false;
+    bool m_unmountKeepsFiles = false;
     bool m_autoSyncBusy = false;
 };
 

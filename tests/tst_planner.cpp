@@ -279,6 +279,64 @@ private Q_SLOTS:
         QCOMPARE(skipped.skipped.size(), 1);
     }
 
+    // A folder that already held files when it was added: nothing was synced yet.
+    void firstSyncOfANonEmptyFolderUploadsLocalFilesWhereTheDirectionAllows()
+    {
+        LocalTree l {{QStringLiteral("mine.txt"), lfile(5, 1000)}, {QStringLiteral("sub"), ldir()},
+            {QStringLiteral("sub/deep.txt"), lfile(7, 1000)}};
+        RemoteTree r {{QStringLiteral("drive.txt"), rfile(QStringLiteral("1"), 3, QStringLiteral("m1"))}};
+        QCOMPARE(describe(plan(l, r, {}, SyncDirection::TwoWay)),
+            QStringLiteral("mkdirR:sub download:drive.txt upload:mine.txt upload:sub/deep.txt"));
+        QCOMPARE(describe(plan(l, r, {}, SyncDirection::LocalToDrive)),
+            QStringLiteral("mkdirR:sub upload:mine.txt upload:sub/deep.txt"));
+        // Drive to local: the local files are kept and not uploaded
+        QCOMPARE(describe(plan(l, r, {}, SyncDirection::DriveToLocal)), QStringLiteral("download:drive.txt"));
+    }
+
+    void sameFileOnBothSidesBeforeTheFirstSyncIsAskedInEveryDirection()
+    {
+        LocalTree l {
+            {QStringLiteral("same.txt"), lfile(4, 1000)}, {QStringLiteral("diff.txt"), lfile(4, 1000)}};
+        RemoteTree r {{QStringLiteral("same.txt"), rfile(QStringLiteral("1"), 4, QStringLiteral("ms"))},
+            {QStringLiteral("diff.txt"), rfile(QStringLiteral("2"), 9, QStringLiteral("md"))}};
+        m_md5.insert(QStringLiteral("same.txt"), QStringLiteral("ms"));
+        for (SyncDirection d :
+            {SyncDirection::TwoWay, SyncDirection::DriveToLocal, SyncDirection::LocalToDrive}) {
+            const SyncPlan p = plan(l, r, {}, d);
+            // identical content is paired without a transfer; different content is never overwritten unasked
+            QCOMPARE(describe(p), QStringLiteral("adopt:same.txt conflict:diff.txt"));
+            QCOMPARE(p.actions.last().conflict, ConflictKind::DifferentBeforeFirstSync);
+        }
+    }
+
+    void oneWayConflictChoicesNeverWriteToTheReadOnlySide()
+    {
+        LocalTree l {{QStringLiteral("a.txt"), lfile(4, 1000)}};
+        RemoteTree r {{QStringLiteral("a.txt"), rfile(QStringLiteral("1"), 9, QStringLiteral("m1"))}};
+        const QString path = QStringLiteral("a.txt");
+        const QString suffix = QStringLiteral(" (conflict copy)");
+        const auto resolve = [&](SyncDirection d, ConflictChoice c) {
+            return describe(applyConflictChoices(plan(l, r, {}, d), {{path, c}}, l, r, suffix, d));
+        };
+        // Drive to local: keeping the local version leaves both files as they are and pairs them
+        QCOMPARE(
+            resolve(SyncDirection::DriveToLocal, ConflictChoice::KeepLocal), QStringLiteral("adopt:a.txt"));
+        QCOMPARE(resolve(SyncDirection::DriveToLocal, ConflictChoice::KeepRemote),
+            QStringLiteral("download:a.txt"));
+        QCOMPARE(resolve(SyncDirection::DriveToLocal, ConflictChoice::KeepBoth),
+            QStringLiteral("rename:a.txt download:a.txt"));
+        // local to Drive: keeping the Drive version leaves both files as they are and pairs them
+        QCOMPARE(
+            resolve(SyncDirection::LocalToDrive, ConflictChoice::KeepLocal), QStringLiteral("upload:a.txt"));
+        QCOMPARE(
+            resolve(SyncDirection::LocalToDrive, ConflictChoice::KeepRemote), QStringLiteral("adopt:a.txt"));
+        QCOMPARE(resolve(SyncDirection::LocalToDrive, ConflictChoice::KeepBoth),
+            QStringLiteral("rename:a.txt upload:a (conflict copy).txt"));
+        // two-way: both sides may change
+        QCOMPARE(resolve(SyncDirection::TwoWay, ConflictChoice::KeepBoth),
+            QStringLiteral("rename:a.txt upload:a (conflict copy).txt download:a.txt"));
+    }
+
     void keepRemoteOfDeletedFileBecomesAVisibleDeletion()
     {
         LocalTree l {{QStringLiteral("a.txt"), lfile(12, 2000)}};

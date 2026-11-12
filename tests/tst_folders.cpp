@@ -1,5 +1,6 @@
 // Requirements:
-//  - "The user can select where the drive folder should be mounted. The destination must be empty."
+//  - "The user can select where the drive folder should be mounted." The destination may already hold
+//    files; they are synced too.
 //  - several folders, each synced and unmounted independently; unmount deletes the local copy
 //  - the Drive folder is chosen from the list of Drive folders
 #include "testutil.h"
@@ -10,7 +11,7 @@ using namespace gdstest;
 class TestFolders : public QObject {
     Q_OBJECT
 private Q_SLOTS:
-    void destinationMustBeEmpty()
+    void destinationValidation()
     {
         Fixture f;
         QVERIFY(f.startLoggedIn());
@@ -25,33 +26,81 @@ private Q_SLOTS:
         // a destination that does not exist yet is created on mount
         QCOMPARE(fm->validateDestination(base + QStringLiteral("/does/not/exist/yet")), QString());
 
+        // folders that already hold files are accepted
         QVERIFY(writeFile(base + QStringLiteral("/full/file.txt"), "x"));
-        QVERIFY(fm->validateDestination(base + QStringLiteral("/full"))
-                    .contains(QStringLiteral("must be empty")));
-        QVERIFY(writeFile(base + QStringLiteral("/hidden/.dotfile"), "x"));
-        QVERIFY(fm->validateDestination(base + QStringLiteral("/hidden"))
-                    .contains(QStringLiteral("must be empty")));
+        QCOMPARE(fm->validateDestination(base + QStringLiteral("/full")), QString());
         QVERIFY(QDir().mkpath(base + QStringLiteral("/withdir/sub")));
-        QVERIFY(fm->validateDestination(base + QStringLiteral("/withdir"))
-                    .contains(QStringLiteral("must be empty")));
+        QCOMPARE(fm->validateDestination(base + QStringLiteral("/withdir")), QString());
         QVERIFY(!fm->validateDestination(base + QStringLiteral("/full/file.txt")).isEmpty()); // not a folder
     }
 
-    void mountingIntoANonEmptyFolderIsRefused()
+    void mountingANonEmptyFolderKeepsItsFiles()
     {
         Fixture f;
         QVERIFY(f.startLoggedIn());
         const QString docs = f.server.addFolder(QStringLiteral("Docs"));
-        QVERIFY(writeFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/already-here.txt"), "x"));
+        const QString dir = f.localDir(QStringLiteral("Docs"));
+        QVERIFY(writeFile(dir + QStringLiteral("/already-here.txt"), "x"));
         QString error;
-        QVERIFY(f.core->folders()
-                    ->addFolder(docs, QStringLiteral("Docs"), f.localDir(QStringLiteral("Docs")), &error)
-                    .isEmpty());
-        QVERIFY(error.contains(QStringLiteral("must be empty")));
+        const QString id = f.core->folders()->addFolder(docs, QStringLiteral("Docs"), dir, &error);
+        QVERIFY2(!id.isEmpty(), qPrintable(error));
+        QVERIFY(f.core->folders()->find(id)->initiallyNonEmpty);
+        QCOMPARE(readFile(dir + QStringLiteral("/already-here.txt")), QByteArray("x"));
+        QVERIFY(f.logText().contains(QStringLiteral("the folder already holds files")));
+
+        // an empty or new destination is not marked
+        const QString other = f.core->folders()->addFolder(f.server.addFolder(QStringLiteral("Other")),
+            QStringLiteral("Other"), f.localDir(QStringLiteral("Other")), &error);
+        QVERIFY(!f.core->folders()->find(other)->initiallyNonEmpty);
+
+        // remembered across restarts
+        f.core->flushSettings();
+        f.createCore();
+        QVERIFY(f.initialize());
+        QVERIFY(f.core->folders()->find(id)->initiallyNonEmpty);
+        QVERIFY(!f.core->folders()->find(other)->initiallyNonEmpty);
+    }
+
+    void unmountCanKeepTheLocalFiles()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+        f.server.addFile(QStringLiteral("from-drive.txt"), docs, "d");
+        const QString dir = f.localDir(QStringLiteral("Docs"));
+        QVERIFY(writeFile(dir + QStringLiteral("/mine.txt"), "m"));
+        const QString id = f.mount(docs, QStringLiteral("Docs"));
+        QCOMPARE(f.sync(id).status, SyncResult::Success);
+        const QString stateFile = f.core->folders()->stateFile(id);
+        QVERIFY(QFile::exists(stateFile));
+
+        QSignalSpy removed(f.core->folders(), &FolderManager::folderRemoved);
+        QVERIFY(f.core->unmountFolder(id, nullptr, /*deleteLocalFiles=*/false));
+        QVERIFY(removed.wait(5000));
+        QVERIFY(removed.first().at(1).toBool());
         QVERIFY(f.core->folders()->folders().isEmpty());
         QVERIFY(f.places.places.isEmpty());
-        QCOMPARE(readFile(f.localDir(QStringLiteral("Docs")) + QStringLiteral("/already-here.txt")),
-            QByteArray("x"));
+        QVERIFY(!QFile::exists(stateFile));
+        // all local files stay: the user's own and the ones the sync brought in
+        QCOMPARE(readFile(dir + QStringLiteral("/mine.txt")), QByteArray("m"));
+        QCOMPARE(readFile(dir + QStringLiteral("/from-drive.txt")), QByteArray("d"));
+        QVERIFY(f.server.existsPath(QStringLiteral("Docs/mine.txt"))); // Drive is not touched
+    }
+
+    void unmountCanDeleteAllLocalFilesOfANonEmptyFolder()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+        const QString dir = f.localDir(QStringLiteral("Docs"));
+        QVERIFY(writeFile(dir + QStringLiteral("/mine.txt"), "m"));
+        const QString id = f.mount(docs, QStringLiteral("Docs"));
+        QCOMPARE(f.sync(id).status, SyncResult::Success);
+        QSignalSpy removed(f.core->folders(), &FolderManager::folderRemoved);
+        QVERIFY(f.core->unmountFolder(id, nullptr, /*deleteLocalFiles=*/true));
+        QVERIFY(removed.wait(5000));
+        QVERIFY(!QFileInfo::exists(dir));
+        QVERIFY(f.server.existsPath(QStringLiteral("Docs/mine.txt")));
     }
 
     void mountCreatesTheDestinationAndAPlacesEntry()

@@ -647,7 +647,7 @@ void AppCore::listDriveFolders(const QString& parentId)
     });
 }
 
-bool AppCore::unmountFolder(const QString& id, QString* error)
+bool AppCore::unmountFolder(const QString& id, QString* error, bool deleteLocalFiles)
 {
     if (m_syncing) {
         if (error)
@@ -659,7 +659,7 @@ bool AppCore::unmountFolder(const QString& id, QString* error)
             *error = QStringLiteral("Unknown folder");
         return false;
     }
-    m_folders->removeFolder(id);
+    m_folders->removeFolder(id, deleteLocalFiles);
     return true;
 }
 
