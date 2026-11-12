@@ -52,16 +52,14 @@ Google Cloud project:
    Enable it.
 4. Create credentials → OAuth Client ID → Desktop App → select scope `https://www.googleapis.com/auth/drive`
 5. Add yourself as a test user: **Google Auth platform → Audience → Test users → Add users**, enter the Google
-   account you will sign in with. Without it the sign-in fails with "Access blocked: … has not completed the
-   Google verification process".
+   account you will sign in with.
 6. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. Extract them from the secret JSON file received from gcloud.
 
 
 ## Usage
 
-1. **Sign In** opens the browser. After the sign-in the browser shows the project page and the application
-   window comes to the front. Choose the sync direction (two-way, Drive to local, or
-   local to Drive). It applies to all folders until you sign out.
+1. **Sign In** with your google account via the browser. Choose the sync direction (two-way, Drive to local,
+   or local to Drive). It applies to all folders until you sign out.
 2. **Add Folder**: pick a Drive folder and an empty local destination.
 3. **Sync Selected** / **Sync All**.
 4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
