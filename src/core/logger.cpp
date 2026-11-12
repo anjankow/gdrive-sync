@@ -7,10 +7,6 @@
 
 namespace gds {
 
-namespace {
-    const qint64 kMaxLogBytes = qint64(5) * 1024 * 1024;
-}
-
 Logger& Logger::instance()
 {
     static Logger logger;
@@ -56,14 +52,26 @@ QString Logger::formatLine(LogLevel level, const QString& message, const QDateTi
         + QLatin1Char('\n');
 }
 
-/// Keeps one previous file once the log grew large.
-void Logger::rotateIfLarge(const QString& path)
+/// Drops the oldest entries once the file reached its maximum size, so that
+/// the newest ones always fit. The file is rewritten in place (same inode):
+/// another gdrive-sync process appending to it keeps working.
+/// Called with m_mutex held.
+void Logger::trimIfLarge()
 {
-    if (QFileInfo(path).size() < kMaxLogBytes)
+    if (m_file.size() <= maxBytes())
         return;
-    const QString old = path + QStringLiteral(".1");
-    QFile::remove(old);
-    QFile::rename(path, old);
+    QFile file(m_file.fileName());
+    if (!file.open(QIODevice::ReadWrite))
+        return;
+    // keep the newest three quarters; cutting a batch avoids rewriting the file for every line
+    const qint64 keep = maxBytes() * 3 / 4;
+    if (!file.seek(file.size() - keep))
+        return;
+    QByteArray tail = file.readAll();
+    const int firstLineEnd = tail.indexOf('\n');
+    tail = firstLineEnd >= 0 ? tail.mid(firstLineEnd + 1) : QByteArray(); // start at a whole entry
+    if (file.seek(0) && file.write(tail) == tail.size())
+        file.resize(tail.size());
 }
 
 bool Logger::setDirectory(const QString& directory, QString* error)
@@ -88,7 +96,6 @@ bool Logger::setDirectory(const QString& directory, QString* error)
             clean, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 
     const QString path = clean + QLatin1Char('/') + fileName();
-    rotateIfLarge(path);
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
         return fail(QStringLiteral("Cannot write %1: %2").arg(path, file.errorString()));
@@ -102,6 +109,7 @@ bool Logger::setDirectory(const QString& directory, QString* error)
         return fail(QStringLiteral("Cannot write %1: %2").arg(path, m_file.errorString()));
     }
     m_directory = clean;
+    trimIfLarge();
     return true;
 }
 
@@ -132,6 +140,7 @@ void Logger::write(LogLevel level, const QString& message)
         return;
     m_file.write(line);
     m_file.flush(); // the log must be complete even after a crash
+    trimIfLarge();
 }
 
 void logDebug(const QString& message)

@@ -219,15 +219,36 @@ QString AppCore::clientSecret() const
     return m_secrets->read(SecretKeys::clientSecret());
 }
 
-bool AppCore::setClientCredentials(const QString& clientId, const QString& clientSecret)
+bool AppCore::setClientCredentials(const QString& clientId, const QString& clientSecret, QString* error)
 {
-    const bool ok = m_secrets->write(SecretKeys::clientId(), clientId.trimmed())
-        && m_secrets->write(SecretKeys::clientSecret(), clientSecret.trimmed());
-    if (ok)
+    const QString previousId = this->clientId();
+    QString reason;
+    bool ok = m_secrets->write(SecretKeys::clientId(), clientId.trimmed());
+    if (!ok) {
+        reason = m_secrets->lastError();
+    } else if (!m_secrets->write(SecretKeys::clientSecret(), clientSecret.trimmed())) {
+        ok = false;
+        reason = m_secrets->lastError();
+        // do not leave a new ID with an old secret behind
+        m_secrets->write(SecretKeys::clientId(), previousId);
+    }
+    if (ok) {
         logInfo(QStringLiteral("Google API client changed"));
-    else
-        gds::logError(QStringLiteral("The Google API client could not be stored in the KDE wallet"));
-    return ok;
+        return true;
+    }
+    if (reason.isEmpty())
+        reason = QStringLiteral("unknown reason");
+    const QString message
+        = QStringLiteral("The Google API client could not be stored in the KDE wallet: %1. The change was "
+                         "aborted: nothing was saved and %2.")
+              .arg(reason,
+                  previousId.isEmpty()
+                      ? QStringLiteral("signing in stays unavailable until the client is saved")
+                      : QStringLiteral("the previously saved client stays in effect"));
+    gds::logError(message);
+    if (error)
+        *error = message;
+    return false;
 }
 
 QString AppCore::accountEmail() const
@@ -345,7 +366,12 @@ void AppCore::onTokens(const OAuthTokens& tokens)
                 return;
             }
             if (!m_secrets->write(SecretKeys::refreshToken(), source->refreshToken())) {
-                Q_EMIT loginFailed(QStringLiteral("Could not store the sign-in data in the KDE wallet."));
+                const QString message = QStringLiteral(
+                    "The sign-in data could not be stored in the KDE wallet: %1. The sign-in was "
+                    "aborted; you are not signed in.")
+                                            .arg(m_secrets->lastError());
+                gds::logError(message);
+                Q_EMIT loginFailed(message);
                 return;
             }
             // Signing in again with a different account starts from scratch.
@@ -377,7 +403,12 @@ void AppCore::logout()
     logInfo(QStringLiteral("Signed out of %1; the folder list and the automatic sync were removed")
                 .arg(accountEmail()));
     const QString refresh = m_secrets->read(SecretKeys::refreshToken());
-    m_secrets->remove(SecretKeys::refreshToken());
+    if (!m_secrets->remove(SecretKeys::refreshToken())) {
+        gds::logError(
+            QStringLiteral("The sign-in data could not be removed from the KDE wallet: %1. You are signed "
+                           "out; the removal is repeated when the wallet is open again.")
+                .arg(m_secrets->lastError()));
+    }
     m_tokens.reset();
     m_folders->clear();
     m_config->deleteGroup("Account");

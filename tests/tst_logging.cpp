@@ -7,6 +7,7 @@
 #include "logger.h"
 #include "testutil.h"
 
+#include <QFileInfo>
 #include <QRegularExpression>
 
 using namespace gds;
@@ -199,6 +200,78 @@ private Q_SLOTS:
         }
     }
 
+    void failedWalletWriteIsAnErrorWithReasonAndOutcome()
+    {
+        Fixture f;
+        f.createCore();
+        QVERIFY(f.initialize());
+        QVERIFY(f.core->setClientCredentials(QStringLiteral("old-id"), QStringLiteral("old-secret")));
+
+        // the wallet gets closed behind the application's back
+        f.secrets.failWrites = true;
+        f.secrets.failReason
+            = QStringLiteral("the KDE wallet was closed or locked after the application opened it");
+        QString error;
+        QVERIFY(
+            !f.core->setClientCredentials(QStringLiteral("new-id"), QStringLiteral("new-secret"), &error));
+        // what happened, why, and what the outcome is
+        QVERIFY(error.contains(QStringLiteral("could not be stored in the KDE wallet")));
+        QVERIFY(error.contains(QStringLiteral("the KDE wallet was closed or locked")));
+        QVERIFY(error.contains(QStringLiteral("The change was aborted")));
+        QVERIFY(error.contains(QStringLiteral("the previously saved client stays in effect")));
+        QCOMPARE(f.core->clientId(), QStringLiteral("old-id"));
+        QCOMPARE(f.core->clientSecret(), QStringLiteral("old-secret"));
+        const QStringList errors = f.logLines(QStringLiteral("ERROR"));
+        QCOMPARE(errors.size(), 1);
+        QCOMPARE(errors.first(), error);
+        QVERIFY(!f.logText().contains(QStringLiteral("new-secret")));
+    }
+
+    void walletFailureHalfwayLeavesThePreviousClient()
+    {
+        Fixture f;
+        f.createCore();
+        QVERIFY(f.initialize());
+        QVERIFY(f.core->setClientCredentials(QStringLiteral("old-id"), QStringLiteral("old-secret")));
+        f.secrets.failWriteOfKey = SecretKeys::clientSecret(); // the ID is written, the secret is not
+        QString error;
+        QVERIFY(
+            !f.core->setClientCredentials(QStringLiteral("new-id"), QStringLiteral("new-secret"), &error));
+        QCOMPARE(f.core->clientId(), QStringLiteral("old-id")); // no new ID with the old secret
+        QCOMPARE(f.core->clientSecret(), QStringLiteral("old-secret"));
+    }
+
+    void firstClientThatCannotBeStoredKeepsSignInUnavailable()
+    {
+        Fixture f;
+        f.createCore();
+        QVERIFY(f.initialize());
+        f.secrets.failWrites = true;
+        QString error;
+        QVERIFY(!f.core->setClientCredentials(QStringLiteral("id"), QStringLiteral("secret"), &error));
+        QVERIFY(error.contains(QStringLiteral("signing in stays unavailable until the client is saved")));
+        QVERIFY(!f.core->hasClientCredentials());
+    }
+
+    void signInThatCannotBeStoredIsAbortedWithAnError()
+    {
+        Fixture f;
+        f.createCore();
+        QVERIFY(f.initialize());
+        QVERIFY(f.core->setClientCredentials(QStringLiteral("cid"), QString()));
+        f.secrets.failWriteOfKey = SecretKeys::refreshToken();
+        f.secrets.failReason = QStringLiteral("the KDE wallet was closed");
+        QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
+        f.core->login();
+        QVERIFY(failed.wait(10000));
+        const QString message = failed.first().at(0).toString();
+        QVERIFY(message.contains(QStringLiteral("the KDE wallet was closed")));
+        QVERIFY(message.contains(QStringLiteral("you are not signed in")));
+        QVERIFY(!f.core->isLoggedIn());
+        QVERIFY(anyContains(
+            f.logLines(QStringLiteral("ERROR")), QStringLiteral("sign-in data could not be stored")));
+    }
+
     void everyLineCarriesASeverity()
     {
         Fixture f;
@@ -257,6 +330,62 @@ private Q_SLOTS:
         QCOMPARE(f.core->logFilePath(), before);
         QCOMPARE(f.core->logDirectory(), f.paths().logDir);
         QVERIFY(anyContains(f.logLines(QStringLiteral("ERROR")), QStringLiteral("cannot be used")));
+    }
+
+    void oldestEntriesAreDroppedAtOneMegabyte()
+    {
+        QCOMPARE(Logger::maxBytes(), qint64(1024) * 1024);
+        Fixture f;
+        f.createCore();
+        const QString file = f.core->logFilePath();
+        const QString padding(150, QLatin1Char('x'));
+        qint64 largest = 0;
+        const int count = 12000; // about 2.4 MB of entries
+        for (int i = 0; i < count; ++i) {
+            logDebug(QStringLiteral("entry %1 %2").arg(i, 6, 10, QLatin1Char('0')).arg(padding));
+            if (i % 200 == 0)
+                largest = qMax(largest, QFileInfo(file).size());
+        }
+        largest = qMax(largest, QFileInfo(file).size());
+        // the file never exceeds the limit ...
+        QVERIFY2(largest <= Logger::maxBytes(), qPrintable(QString::number(largest)));
+        QVERIFY(largest > Logger::maxBytes() / 2);
+        // ... there is only this one file ...
+        QCOMPARE(
+            QDir(f.paths().logDir).entryList(QDir::Files), QStringList {QStringLiteral("gdrive-sync.log")});
+
+        const QStringList lines = f.logText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        // ... the newest entries are there, the oldest are gone ...
+        QVERIFY(lines.last().contains(QStringLiteral("entry %1").arg(count - 1, 6, 10, QLatin1Char('0'))));
+        QVERIFY(!f.logText().contains(QStringLiteral("entry 000000 ")));
+        QVERIFY(!f.logText().contains(QStringLiteral("entry 000100 ")));
+        // ... and what remains is whole, consecutive entries in order
+        const QRegularExpression re(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}T\\S+ DEBUG entry (\\d{6}) x+$"));
+        int previous = -1;
+        for (const QString& line : lines) {
+            const auto m = re.match(line);
+            QVERIFY2(m.hasMatch(), qPrintable(line.left(80)));
+            const int n = m.captured(1).toInt();
+            if (previous >= 0)
+                QCOMPARE(n, previous + 1);
+            previous = n;
+        }
+        QCOMPARE(previous, count - 1);
+    }
+
+    void oversizedExistingLogIsTrimmedWhenOpened()
+    {
+        Fixture f;
+        const QString file = f.paths().logDir + QStringLiteral("/gdrive-sync.log");
+        QByteArray old;
+        for (int i = 0; old.size() < 3 * Logger::maxBytes(); ++i)
+            old += "2026-01-01T00:00:00.000+00:00 INFO  old entry " + QByteArray::number(i) + '\n';
+        QVERIFY(writeFile(file, old));
+        f.createCore();
+        QVERIFY(QFileInfo(file).size() <= Logger::maxBytes());
+        const QString text = f.logText();
+        QVERIFY(text.startsWith(QStringLiteral("2026-01-01T00:00:00.000+00:00 INFO  old entry ")));
+        QVERIFY(!text.contains(QStringLiteral("old entry 0\n")));
     }
 
     void logIsAppendedAcrossRestarts()

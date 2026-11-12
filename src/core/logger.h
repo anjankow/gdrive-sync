@@ -23,6 +23,8 @@ public:
     /// A private directory below the system temp directory, e.g. /tmp/gdrive-sync-<user>.
     static QString defaultDirectory();
     static QString levelName(LogLevel level);
+    /// The log file never grows beyond this size: the oldest entries are dropped.
+    static qint64 maxBytes() { return qint64(1024) * 1024; }
 
     /// Opens (appends to) gdrive-sync.log in \p directory, creating the
     /// directory when needed. On failure the previous log file stays in use.
@@ -38,7 +40,7 @@ public:
 
 private:
     Logger() = default;
-    void rotateIfLarge(const QString& path);
+    void trimIfLarge();
 
     mutable QMutex m_mutex;
     QFile m_file;

@@ -206,19 +206,20 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_core, &AppCore::loginSucceeded, this, &MainWindow::onLoginSucceeded);
     connect(m_core, &AppCore::loginFailed, this, [this](const QString& error) {
         refreshAccount();
-        log(i18n("Sign-in failed: %1", error));
-        KMessageBox::error(this, error, i18nc("@title:window", "Sign-in Failed"), KMessageBox::Notify);
+        log(i18n("Sign-in failed: %1", error), LogLevel::Warn);
+        showError(i18nc("@title:window", "Sign-in Failed"), error);
     });
     connect(m_core, &AppCore::loggedOut, this, [this]() { log(i18n("Signed out.")); });
     connect(m_core, &AppCore::authorizationLost, this, [this]() {
-        log(i18n("Google rejected the stored sign-in. Please sign in again."));
+        log(i18n("Google rejected the stored sign-in. Please sign in again."), LogLevel::Warn);
         refreshAccount();
     });
     connect(m_core->folders(), &FolderManager::foldersChanged, this, &MainWindow::refreshFolders);
     connect(m_core->folders(), &FolderManager::folderRemoved, this,
         [this](const QString&, bool ok, const QString& error) {
             m_unmounting = false;
-            log(ok ? i18n("Folder unmounted; the local copy was deleted.") : error);
+            log(ok ? i18n("Folder unmounted; the local copy was deleted.") : error,
+                ok ? LogLevel::Info : LogLevel::Error);
             refreshButtons();
         });
     connect(m_core, &AppCore::syncStarted, this, [this]() {
@@ -235,8 +236,8 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_core, &AppCore::autoSyncChanged, this, [this](bool ok, const QString& error) {
         m_autoSyncBusy = false;
         if (!ok) {
-            log(i18n("Automatic sync could not be changed: %1", error));
-            KMessageBox::error(this, error, i18nc("@title:window", "Automatic Sync"), KMessageBox::Notify);
+            log(i18n("Automatic sync could not be changed: %1", error), LogLevel::Error);
+            showError(i18nc("@title:window", "Automatic Sync"), error);
         } else if (m_core->isLoggedIn()) {
             log(m_core->autoSyncEnabled()
                     ? i18n("Automatic sync is on (every %1 minutes).", m_core->autoSyncIntervalMinutes())
@@ -269,10 +270,22 @@ QString MainWindow::folderName(const QString& id) const
     return f ? f->driveFolderName : id;
 }
 
-void MainWindow::log(const QString& text)
+/// Shows an error box once control is back in the event loop. Opening a
+/// modal box directly from a signal of a dialog that is just closing would
+/// run a nested event loop while that dialog is being torn down.
+void MainWindow::showError(const QString& title, const QString& text)
 {
-    m_log->appendPlainText(
-        QStringLiteral("[%1] %2").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")), text));
+    QMetaObject::invokeMethod(
+        this, [this, title, text]() { KMessageBox::error(this, text, title, KMessageBox::Notify); },
+        Qt::QueuedConnection);
+}
+
+void MainWindow::log(const QString& text, LogLevel level)
+{
+    // every line carries its severity, like the log file
+    m_log->appendPlainText(QStringLiteral("[%1] %2 %3")
+                               .arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")),
+                                   Logger::levelName(level).leftJustified(5), text));
 }
 
 void MainWindow::refreshAccount()
@@ -405,8 +418,9 @@ void MainWindow::onInitialized(bool ok, const QString& error)
     refreshAccount();
     if (!ok) {
         m_account->setText(i18n("KDE wallet not available"));
-        log(error);
-        KMessageBox::error(this, error, i18nc("@title:window", "KDE Wallet"), KMessageBox::Notify);
+        m_account->setVisible(true);
+        log(error, LogLevel::Error);
+        showError(i18nc("@title:window", "KDE Wallet"), error);
         return;
     }
     if (m_core->isLoggedIn() && m_core->direction() == SyncDirection::Unset)
@@ -418,8 +432,13 @@ void MainWindow::editCredentials()
     auto* dialog = new CredentialsDialog(m_core->clientId(), m_core->clientSecret(), this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(dialog, &QDialog::accepted, this, [this, dialog]() {
-        if (!m_core->setClientCredentials(dialog->clientId(), dialog->clientSecret()))
-            log(i18n("The Google API client could not be stored in the KDE wallet."));
+        QString error;
+        if (!m_core->setClientCredentials(dialog->clientId(), dialog->clientSecret(), &error)) {
+            log(error, LogLevel::Error);
+            showError(i18nc("@title:window", "Google API Client"), error);
+        } else {
+            log(i18n("Google API client saved in the KDE wallet."));
+        }
         refreshButtons();
     });
     dialog->open();
@@ -482,7 +501,7 @@ void MainWindow::addFolder()
         const QString id = m_core->folders()->addFolder(
             dialog->driveFolderId(), dialog->driveFolderName(), dialog->localPath(), &error);
         if (id.isEmpty()) {
-            KMessageBox::error(this, error, i18nc("@title:window", "Add Folder"), KMessageBox::Notify);
+            showError(i18nc("@title:window", "Add Folder"), error);
             return;
         }
         log(i18n("Added \"%1\". Press \"Sync Selected\" to download it.", dialog->driveFolderName()));
@@ -509,7 +528,7 @@ void MainWindow::unmountSelected()
         m_unmounting = true;
         refreshButtons();
     } else {
-        log(error);
+        log(error, LogLevel::Warn);
     }
 }
 
@@ -558,8 +577,8 @@ void MainWindow::editLogLocation()
         if (m_core->setLogDirectory(dialog->directory(), &error)) {
             log(i18n("Log file: %1", m_core->logFilePath()));
         } else {
-            log(i18n("The log location could not be changed: %1", error));
-            KMessageBox::error(this, error, i18nc("@title:window", "Log Location"), KMessageBox::Notify);
+            log(i18n("The log location could not be changed: %1", error), LogLevel::Error);
+            showError(i18nc("@title:window", "Log Location"), error);
         }
     });
     dialog->open();
@@ -595,9 +614,11 @@ void MainWindow::onDeletions(const QString& folderId, const QStringList& local, 
 
 void MainWindow::onFolderFinished(const SyncResult& result)
 {
-    log(QStringLiteral("%1: %2").arg(folderName(result.folderId), formatResult(result)));
+    const bool failed = result.status == SyncResult::Failed || result.status == SyncResult::AuthRequired;
+    log(QStringLiteral("%1: %2").arg(folderName(result.folderId), formatResult(result)),
+        failed ? LogLevel::Warn : LogLevel::Info);
     for (const QString& e : result.errors)
-        log(i18n("  Error: %1", e));
+        log(i18n("  Error: %1", e), LogLevel::Warn);
     for (const QString& s : result.skipped)
         log(i18n("  Skipped: %1", s));
 }

@@ -50,7 +50,9 @@ public:
     bool hasClientCredentials() const;
     QString clientId() const;
     QString clientSecret() const;
-    bool setClientCredentials(const QString& clientId, const QString& clientSecret);
+    /// Stores the client in the wallet. On failure nothing is changed (the
+    /// previous client stays in effect) and \p error says what happened and why.
+    bool setClientCredentials(const QString& clientId, const QString& clientSecret, QString* error = nullptr);
 
     // account
     bool isLoggedIn() const { return m_tokens != nullptr; }

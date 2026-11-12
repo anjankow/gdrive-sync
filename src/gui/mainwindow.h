@@ -1,6 +1,7 @@
 #pragma once
 
 #include "appcore.h"
+#include "logger.h"
 
 #include <QMainWindow>
 #include <QPointer>
@@ -33,7 +34,8 @@ private:
     void refreshButtons();
     void loadAvatar();
     void setAvatar(const QPixmap& picture);
-    void log(const QString& text);
+    void log(const QString& text, LogLevel level = LogLevel::Info);
+    void showError(const QString& title, const QString& text);
     QString folderName(const QString& id) const;
 
     void onInitialized(bool ok, const QString& error);

@@ -137,11 +137,8 @@ LogLocationDialog::LogLocationDialog(
 {
     setWindowTitle(i18nc("@title:window", "Log Location"));
     auto* layout = new QVBoxLayout(this);
-    auto* intro = new QLabel(
-        i18n("Folder for the log file <b>%1</b>. Sign-ins and configuration changes are logged as INFO, "
-             "file syncs as DEBUG, sync errors as WARN and unexpected application errors as ERROR.",
-            QStringLiteral("gdrive-sync.log")),
-        this);
+    auto* intro = new QLabel(i18n("Folder for the log file %1:", QStringLiteral("gdrive-sync.log")), this);
+    intro->setObjectName(QStringLiteral("logLocationLabel"));
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto* row = new QHBoxLayout;

@@ -19,6 +19,8 @@ public:
     virtual QString read(const QString& key) const = 0;
     virtual bool write(const QString& key, const QString& value) = 0;
     virtual bool remove(const QString& key) = 0;
+    /// Why the last write() or remove() failed; empty after a success.
+    virtual QString lastError() const = 0;
 
 Q_SIGNALS:
     void opened(bool ok);
@@ -39,8 +41,11 @@ public:
     QString read(const QString& key) const override { return m_data.value(key); }
     bool write(const QString& key, const QString& value) override
     {
-        if (!m_open)
+        if (!m_open || failWrites || key == failWriteOfKey) {
+            m_lastError = failReason;
             return false;
+        }
+        m_lastError.clear();
         m_data.insert(key, value);
         return true;
     }
@@ -49,13 +54,18 @@ public:
         m_data.remove(key);
         return true;
     }
+    QString lastError() const override { return m_lastError; }
     const QHash<QString, QString>& data() const { return m_data; }
 
     bool failOpen = false;
+    bool failWrites = false; ///< simulate a wallet that was closed after opening
+    QString failWriteOfKey; ///< simulate a failure in the middle of a change
+    QString failReason = QStringLiteral("the wallet is closed");
 
 private:
     bool m_open = false;
     QHash<QString, QString> m_data;
+    QString m_lastError;
 };
 
 namespace SecretKeys {

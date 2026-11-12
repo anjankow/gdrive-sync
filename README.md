@@ -80,8 +80,8 @@ Every event is written with a timestamp and a severity:
 | `WARN` | Sync errors, failed sign-ins, a rejected stored sign-in |
 | `ERROR` | Unexpected application errors (wallet not available, systemd refusing the timer, unusable log folder) |
 
-The log folder is created readable by you only. The file is kept below 5 MB; one previous file is kept as
-`gdrive-sync.log.1`. Tokens and the client secret are never logged.
+The log folder is created readable by you only. The file never grows beyond 1 MB: once it is full, the oldest
+entries are dropped to make room for new ones. Tokens and the client secret are never logged.
 
 `gdrive-sync --sync` runs one unattended sync of all folders and exits (this is what the timer starts).
 

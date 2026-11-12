@@ -540,6 +540,54 @@ private Q_SLOTS:
             QStringLiteral("Add Folder"));
     }
 
+    void walletFailureWhenSavingTheClientIsShownAsAnError()
+    {
+        Fixture f;
+        f.createCore();
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(f.initialize());
+        f.secrets.failWrites = true;
+        f.secrets.failReason
+            = QStringLiteral("the KDE wallet was closed or locked after the application opened it");
+
+        window.findChild<QAction*>(QStringLiteral("actionApiClient"))->trigger();
+        auto* dialog = window.findChild<CredentialsDialog*>();
+        QVERIFY(dialog);
+        child<QLineEdit>(dialog, "clientId")->setText(QStringLiteral("some-id"));
+        // the error is also shown in a message box, once the dialog is closed
+        answerNextMessageBox(QDialogButtonBox::Ok);
+        dialog->accept();
+        QTest::qWait(400);
+        QVERIFY(!QApplication::activeModalWidget()); // the box was shown and answered
+
+        const QString log = child<QPlainTextEdit>(&window, "log")->toPlainText();
+        const QStringList lines = log.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        const QString line = lines.last();
+        // marked as an error, with the reason and with what happened to the change
+        QVERIFY2(
+            QRegularExpression(QStringLiteral("^\\[\\d\\d:\\d\\d:\\d\\d\\] ERROR ")).match(line).hasMatch(),
+            qPrintable(line));
+        QVERIFY(line.contains(QStringLiteral("could not be stored in the KDE wallet")));
+        QVERIFY(line.contains(QStringLiteral("the KDE wallet was closed or locked")));
+        QVERIFY(line.contains(QStringLiteral("The change was aborted")));
+        QVERIFY(!f.core->hasClientCredentials());
+
+        // a successful save is an INFO line
+        f.secrets.failWrites = false;
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        window.findChild<QAction*>(QStringLiteral("actionApiClient"))->trigger();
+        dialog = window.findChildren<CredentialsDialog*>().last();
+        child<QLineEdit>(dialog, "clientId")->setText(QStringLiteral("some-id"));
+        dialog->accept();
+        QVERIFY(child<QPlainTextEdit>(&window, "log")
+                    ->toPlainText()
+                    .split(QLatin1Char('\n'))
+                    .last()
+                    .contains(QStringLiteral("] INFO  Google API client saved")));
+        QVERIFY(f.core->hasClientCredentials());
+    }
+
     void logLocationIsChosenInTheSettingsMenu()
     {
         Fixture f;
@@ -554,6 +602,12 @@ private Q_SLOTS:
         QVERIFY(dialog);
         auto* edit = child<QLineEdit>(dialog, "logDirectory");
         QCOMPARE(edit->text(), f.paths().logDir);
+        // the dialog says only what the folder is for
+        QCOMPARE(child<QLabel>(dialog, "logLocationLabel")->text(),
+            QStringLiteral("Folder for the log file gdrive-sync.log:"));
+        for (const QLabel* label : dialog->findChildren<QLabel*>())
+            QVERIFY(!label->text().contains(QStringLiteral("DEBUG"))
+                && !label->text().contains(QStringLiteral("INFO")));
         const QString chosen = f.tmp.path() + QStringLiteral("/my-logs");
         edit->setText(chosen);
         dialog->accept();
