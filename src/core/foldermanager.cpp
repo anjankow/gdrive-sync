@@ -108,6 +108,10 @@ void FolderManager::load()
         f.localPath = g.readEntry("localPath", QString());
         f.lastSync = g.readEntry("lastSync", QDateTime());
         f.lastStatus = g.readEntry("lastStatus", QString());
+        // earlier versions stored the counts of a successful sync too
+        if (f.lastStatus.startsWith(QLatin1String("Synced: "))
+            && !f.lastStatus.contains(QStringLiteral(" — ")))
+            f.lastStatus = QStringLiteral("Synced");
         f.initiallyNonEmpty = g.readEntry("initiallyNonEmpty", false);
         f.direction = parseDirection(g.readEntry("direction", 0), SyncDirection::TwoWay);
         if (!f.driveFolderId.isEmpty() && !f.localPath.isEmpty())

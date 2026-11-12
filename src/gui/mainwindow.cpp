@@ -35,6 +35,8 @@
 namespace gds {
 
 namespace {
+    constexpr int DirectionColumn = 4; // the last column
+
     /// The mouse wheel scrolls the folder list; it must not change a direction by accident.
     class DirectionCombo : public QComboBox {
     public:
@@ -131,10 +133,12 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     m_folders = new QTreeWidget(foldersBox);
     m_folders->setObjectName(QStringLiteral("folderList"));
     m_folders->setRootIsDecorated(false);
-    m_folders->setHeaderLabels({i18n("Google Drive folder"), i18n("Local folder"), i18n("Direction"),
-        i18n("Last sync"), i18n("Status")});
+    m_folders->setHeaderLabels({i18n("Google Drive folder"), i18n("Local folder"), i18n("Last sync"),
+        i18n("Status"), i18n("Direction")});
     m_folders->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    m_folders->header()->setStretchLastSection(true);
+    // the spare width goes to the local path, not to the dropdown in the last column
+    m_folders->header()->setStretchLastSection(false);
+    m_folders->header()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_folders->setMinimumHeight(220);
     foldersLayout->addWidget(m_folders);
     auto* folderButtons = new QHBoxLayout;
@@ -406,8 +410,8 @@ void MainWindow::refreshFolders()
         item->setText(0, f.driveFolderName);
         item->setText(1, f.localPath);
         item->setText(
-            3, f.lastSync.isValid() ? QLocale().toString(f.lastSync, QLocale::ShortFormat) : i18n("Never"));
-        item->setText(4, f.lastStatus);
+            2, f.lastSync.isValid() ? QLocale().toString(f.lastSync, QLocale::ShortFormat) : i18n("Never"));
+        item->setText(3, f.lastStatus);
 
         // the direction can be changed at any time; it applies from the next sync
         auto* combo = new DirectionCombo(m_folders);
@@ -425,7 +429,7 @@ void MainWindow::refreshFolders()
                 this, [this, id, direction]() { changeFolderDirection(id, direction); },
                 Qt::QueuedConnection);
         });
-        m_folders->setItemWidget(item, 2, combo);
+        m_folders->setItemWidget(item, DirectionColumn, combo);
     }
     selectFolder(selected);
     if (m_folders->selectedItems().isEmpty() && m_folders->topLevelItemCount() > 0)

@@ -14,5 +14,8 @@ QString formatProgress(const SyncProgress& progress);
 int progressPermille(const SyncProgress& progress);
 
 QString formatResult(const SyncResult& result);
+/// Short status for the folder list: just "Synced" after a successful sync;
+/// otherwise what went wrong or what is pending (as formatResult()).
+QString formatStatus(const SyncResult& result);
 
 } // namespace gds

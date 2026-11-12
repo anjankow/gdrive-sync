@@ -265,6 +265,36 @@ private Q_SLOTS:
         QVERIFY(dialog.validationLabel()->text().isEmpty());
     }
 
+    void statusColumnShowsJustSyncedAfterASuccessfulSync()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        const QString docs = f.server.addFolder(QStringLiteral("Docs"));
+        f.server.addFile(QStringLiteral("a.txt"), docs, "a");
+        const QString id = f.mount(docs, QStringLiteral("Docs"));
+        MainWindow window(f.core.get());
+        window.show();
+        auto* list = child<QTreeWidget>(&window, "folderList");
+        QCOMPARE(list->headerItem()->text(3), QStringLiteral("Status"));
+        QCOMPARE(f.sync(id).status, SyncResult::Success);
+        QTRY_COMPARE(list->topLevelItem(0)->text(3), QStringLiteral("Synced"));
+        // the details are in the log pane
+        QVERIFY(
+            child<QPlainTextEdit>(&window, "log")->toPlainText().contains(QStringLiteral("1 downloaded")));
+
+        // a failure keeps its reason
+        f.server.failNext(QStringLiteral("/drive/v3/files"), 500, 50);
+        QCOMPARE(f.sync(id).status, SyncResult::Failed);
+        QTRY_VERIFY(list->topLevelItem(0)->text(3).startsWith(QStringLiteral("Failed: ")));
+
+        // a status stored by an earlier version is shortened too
+        f.core->folders()->recordSync(id, QStringLiteral("Synced: 1 downloaded, 0 uploaded (5 B)"));
+        f.core->flushSettings();
+        f.createCore();
+        QVERIFY(f.initialize());
+        QCOMPARE(f.core->folders()->find(id)->lastStatus, QStringLiteral("Synced"));
+    }
+
     void addingAFolderThroughTheWindowMountsIt()
     {
         Fixture f;
@@ -321,10 +351,12 @@ private Q_SLOTS:
         MainWindow window(f.core.get());
         window.show();
         auto* list = child<QTreeWidget>(&window, "folderList");
-        QCOMPARE(list->headerItem()->text(2), QStringLiteral("Direction"));
+        // the direction is the last column
+        QCOMPARE(list->columnCount(), 5);
+        QCOMPARE(list->headerItem()->text(4), QStringLiteral("Direction"));
         const auto comboOf = [&](const QString& id) -> QComboBox* {
             for (int i = 0; i < list->topLevelItemCount(); ++i) {
-                auto* combo = qobject_cast<QComboBox*>(list->itemWidget(list->topLevelItem(i), 2));
+                auto* combo = qobject_cast<QComboBox*>(list->itemWidget(list->topLevelItem(i), 4));
                 if (combo && combo->property("folderId").toString() == id)
                     return combo;
             }

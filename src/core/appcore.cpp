@@ -624,7 +624,7 @@ void AppCore::failQueuedJobs(SyncResult::Status status, const QString& message)
         r.folderId = job.folderId;
         r.errorMessage = message;
         m_results.append(r);
-        m_folders->recordSync(r.folderId, formatResult(r));
+        m_folders->recordSync(r.folderId, formatStatus(r));
         Q_EMIT folderSyncFinished(r);
     }
     finishBatch();
@@ -776,7 +776,7 @@ void AppCore::startNextJob()
 void AppCore::onEngineFinished(const SyncResult& result)
 {
     m_results.append(result);
-    m_folders->recordSync(result.folderId, formatResult(result));
+    m_folders->recordSync(result.folderId, formatStatus(result));
     Q_EMIT folderSyncFinished(result);
     if (result.status == SyncResult::AuthRequired) {
         m_queue.clear();
