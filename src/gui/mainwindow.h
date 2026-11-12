@@ -5,12 +5,13 @@
 #include <QMainWindow>
 #include <QPointer>
 
-class QCheckBox;
+class QAction;
 class QLabel;
 class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
-class QSpinBox;
+class QNetworkAccessManager;
+class QToolButton;
 class QTreeWidget;
 
 namespace gds {
@@ -30,7 +31,8 @@ private:
     void refreshAccount();
     void refreshFolders();
     void refreshButtons();
-    void refreshAutoSync();
+    void loadAvatar();
+    void setAvatar(const QPixmap& picture);
     void log(const QString& text);
     QString folderName(const QString& id) const;
 
@@ -43,7 +45,8 @@ private:
     void unmountSelected();
     void syncSelected();
     void syncAll();
-    void applyAutoSync();
+    void editAutoSync();
+    void confirmSignOut();
     void onProgress(const gds::SyncProgress& progress);
     void onConflicts(const QString& folderId, const QVector<gds::ConflictInfo>& conflicts);
     void onDeletions(const QString& folderId, const QStringList& local, const QStringList& remote);
@@ -55,7 +58,14 @@ private:
     QLabel* m_account;
     QLabel* m_direction;
     QPushButton* m_login;
-    QPushButton* m_credentials;
+    QToolButton* m_accountButton;
+    QLabel* m_accountInfo;
+    QAction* m_signOut;
+    QToolButton* m_settings;
+    QAction* m_apiClient;
+    QAction* m_autoSyncAction;
+    QNetworkAccessManager* m_nam;
+    QString m_avatarUrl;
     QTreeWidget* m_folders;
     QPushButton* m_add;
     QPushButton* m_unmount;
@@ -66,9 +76,6 @@ private:
     QProgressBar* m_progress;
     QLabel* m_progressText;
     QLabel* m_currentFile;
-    QCheckBox* m_autoSync;
-    QSpinBox* m_interval;
-    QPushButton* m_applyAuto;
     QPlainTextEdit* m_log;
     bool m_unmounting = false;
     bool m_autoSyncBusy = false;

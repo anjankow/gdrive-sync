@@ -94,6 +94,7 @@ void AppCore::onStoreOpened(bool ok)
     if (!refresh.isEmpty() && hasClientCredentials()) {
         m_tokens = std::make_shared<TokenSource>(m_endpoints, clientId(), clientSecret(), refresh);
         createEngine();
+        refreshAccountInfo();
     }
     Q_EMIT initialized(true, QString());
     Q_EMIT accountChanged();
@@ -123,6 +124,51 @@ bool AppCore::setClientCredentials(const QString& clientId, const QString& clien
 QString AppCore::accountEmail() const
 {
     return m_config->group("Account").readEntry("email", QString());
+}
+
+QString AppCore::accountName() const
+{
+    return m_config->group("Account").readEntry("name", QString());
+}
+
+QString AppCore::accountPhotoUrl() const
+{
+    return m_config->group("Account").readEntry("photo", QString());
+}
+
+void AppCore::storeAccountInfo(const AccountInfo& info)
+{
+    KConfigGroup group = m_config->group("Account");
+    group.writeEntry("email", info.email);
+    group.writeEntry("name", info.displayName);
+    group.writeEntry("photo", info.photoLink);
+    m_config->sync();
+}
+
+/// Updates name and picture of a restored login in the background.
+void AppCore::refreshAccountInfo()
+{
+    if (!m_tokens)
+        return;
+    const GoogleEndpoints endpoints = m_endpoints;
+    const auto tokens = m_tokens;
+    runInBackground<DriveResult<AccountInfo>>(
+        this,
+        [endpoints, tokens]() {
+            DriveClient client(endpoints, tokens);
+            client.setMaxRetries(1);
+            return client.about();
+        },
+        [this, tokens](const DriveResult<AccountInfo>& about) {
+            // ignore the answer when the user signed out or switched accounts meanwhile
+            if (!about.ok() || tokens != m_tokens || about.value.email.isEmpty())
+                return;
+            if (about.value.email == accountEmail() && about.value.displayName == accountName()
+                && about.value.photoLink == accountPhotoUrl())
+                return;
+            storeAccountInfo(about.value);
+            Q_EMIT accountChanged();
+        });
 }
 
 SyncDirection AppCore::direction() const
@@ -202,8 +248,7 @@ void AppCore::onTokens(const OAuthTokens& tokens)
             destroyEngine();
             m_tokens = source;
             createEngine();
-            m_config->group("Account").writeEntry("email", about.value.email);
-            m_config->sync();
+            storeAccountInfo(about.value);
             Q_EMIT accountChanged();
             Q_EMIT loginSucceeded();
         });

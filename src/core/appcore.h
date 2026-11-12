@@ -54,6 +54,9 @@ public:
     // account
     bool isLoggedIn() const { return m_tokens != nullptr; }
     QString accountEmail() const;
+    QString accountName() const;
+    /// URL of the profile picture of the signed-in user; may be empty.
+    QString accountPhotoUrl() const;
     bool isLoginInProgress() const { return m_flow != nullptr; }
     void login();
     void cancelLogin();
@@ -108,6 +111,8 @@ Q_SIGNALS:
 private:
     void onStoreOpened(bool ok);
     void onTokens(const OAuthTokens& tokens);
+    void storeAccountInfo(const AccountInfo& info);
+    void refreshAccountInfo();
     void createEngine();
     void destroyEngine();
     bool startJobs(const QVector<FolderConfig>& folders, bool interactive);

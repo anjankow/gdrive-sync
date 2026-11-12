@@ -188,6 +188,25 @@ void MockGoogleServer::setAccountEmail(const QString& email)
     m_email = email;
 }
 
+void MockGoogleServer::setAccountName(const QString& name)
+{
+    QMutexLocker lock(&m_mutex);
+    m_name = name;
+}
+
+void MockGoogleServer::setAccountHasPhoto(bool hasPhoto)
+{
+    QMutexLocker lock(&m_mutex);
+    m_hasPhoto = hasPhoto;
+}
+
+QByteArray MockGoogleServer::photoPng()
+{
+    // a 2x2 red PNG
+    return QByteArray::fromBase64("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7g"
+                                  "P9i18U1AAAAABJRU5ErkJggg==");
+}
+
 void MockGoogleServer::setDenyAuthorization(bool deny)
 {
     QMutexLocker lock(&m_mutex);
@@ -467,6 +486,16 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
         return;
     }
 
+    if (req.path == QLatin1String("/photo")) { // profile pictures are public URLs
+        const bool has = m_hasPhoto;
+        lock.unlock();
+        if (has)
+            reply(socket, 200, photoPng(), {}, "image/png");
+        else
+            replyError(socket, 404, QStringLiteral("notFound"), QStringLiteral("No photo"));
+        return;
+    }
+
     if (!authorized(req)) {
         lock.unlock();
         replyError(socket, 401, QStringLiteral("authError"), QStringLiteral("Invalid Credentials"));
@@ -475,8 +504,9 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
 
     // ---- Drive v3 ----
     if (req.path == QLatin1String("/drive/v3/about")) {
-        const QJsonObject user {{QStringLiteral("emailAddress"), m_email},
-            {QStringLiteral("displayName"), QStringLiteral("Test User")}};
+        QJsonObject user {{QStringLiteral("emailAddress"), m_email}, {QStringLiteral("displayName"), m_name}};
+        if (m_hasPhoto)
+            user.insert(QStringLiteral("photoLink"), baseUrl() + QStringLiteral("/photo"));
         lock.unlock();
         reply(socket, 200, QJsonDocument(QJsonObject {{QStringLiteral("user"), user}}).toJson());
         return;

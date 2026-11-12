@@ -2,6 +2,7 @@
 
 #include <KLocalizedString>
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -14,6 +15,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSpinBox>
 #include <QTableWidget>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -31,10 +33,24 @@ CredentialsDialog::CredentialsDialog(const QString& clientId, const QString& cli
 {
     setWindowTitle(i18nc("@title:window", "Google API Client"));
     auto* layout = new QVBoxLayout(this);
-    auto* intro
-        = new QLabel(i18n("Enter the OAuth client of your Google Cloud project (type \"Desktop app\", "
-                          "Google Drive API enabled). The values are stored in the KDE wallet."),
-            this);
+    // Where the two values are found in the Google Cloud console
+    // (https://developers.google.com/workspace/guides/create-credentials).
+    auto* intro = new QLabel(
+        i18n(
+            "<p>Where to find the client ID and client secret:</p>"
+            "<ol>"
+            "<li>Open <a href=\"https://console.cloud.google.com/auth/clients\">console.cloud.google.com</a> "
+            "and select your project.</li>"
+            "<li>Go to <b>Menu &gt; Google Auth platform &gt; Clients</b>.</li>"
+            "<li>Click your client of type <b>Desktop app</b>, or create one with <b>Create Client</b>.</li>"
+            "<li>Copy <b>Client ID</b> and <b>Client secret</b> from the client's page.</li>"
+            "</ol>"
+            "<p>The Google Drive API must be enabled for the project. The values are stored in the KDE "
+            "wallet.</p>"),
+        this);
+    intro->setObjectName(QStringLiteral("credentialsHelp"));
+    intro->setTextFormat(Qt::RichText);
+    intro->setOpenExternalLinks(true);
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto* form = new QFormLayout;
@@ -65,6 +81,51 @@ QString CredentialsDialog::clientId() const
 QString CredentialsDialog::clientSecret() const
 {
     return m_secret->text().trimmed();
+}
+
+// ------------------------------------------------------------- automatic sync
+
+AutoSyncDialog::AutoSyncDialog(bool enabled, int intervalMinutes, QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle(i18nc("@title:window", "Automatic Sync"));
+    auto* layout = new QVBoxLayout(this);
+    auto* row = new QHBoxLayout;
+    m_enabled = new QCheckBox(i18n("Sync all folders automatically every"), this);
+    m_enabled->setObjectName(QStringLiteral("autoSyncCheck"));
+    m_enabled->setChecked(enabled);
+    m_interval = new QSpinBox(this);
+    m_interval->setObjectName(QStringLiteral("autoSyncInterval"));
+    m_interval->setRange(5, 24 * 60);
+    m_interval->setValue(intervalMinutes > 0 ? intervalMinutes : 30);
+    m_interval->setSuffix(i18n(" minutes"));
+    row->addWidget(m_enabled);
+    row->addWidget(m_interval);
+    row->addStretch(1);
+    layout->addLayout(row);
+    auto* note = new QLabel(
+        i18n("Installs a systemd user timer. Automatic runs never delete files and never resolve "
+             "conflicts; those are left for the next manual sync."),
+        this);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(buttons);
+    connect(m_enabled, &QCheckBox::toggled, m_interval, &QWidget::setEnabled);
+    m_interval->setEnabled(enabled);
+    resize(480, sizeHint().height());
+}
+
+bool AutoSyncDialog::isEnabledChecked() const
+{
+    return m_enabled->isChecked();
+}
+
+int AutoSyncDialog::intervalMinutes() const
+{
+    return m_interval->value();
 }
 
 // ------------------------------------------------------------------ direction

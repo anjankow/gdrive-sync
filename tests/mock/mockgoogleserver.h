@@ -57,6 +57,10 @@ public:
 
     // ---- accounts / OAuth ----
     void setAccountEmail(const QString& email);
+    void setAccountName(const QString& name);
+    /// Whether the account has a profile picture (served at /photo).
+    void setAccountHasPhoto(bool hasPhoto);
+    static QByteArray photoPng();
     void setDenyAuthorization(bool deny);
     void expireAccessTokens();
     void invalidateRefreshTokens();
@@ -130,6 +134,8 @@ private:
     QMap<QString, QString> m_lastAuthQuery;
     QMap<QString, QString> m_lastTokenRequest;
     QString m_email = QStringLiteral("tester@example.com");
+    QString m_name = QStringLiteral("Test User");
+    bool m_hasPhoto = true;
     bool m_deny = false;
     int m_maxPageSize = 1000;
     int m_chunkDelayMs = 0;

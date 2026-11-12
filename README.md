@@ -39,7 +39,8 @@ Google Cloud project:
 2. Configure the OAuth consent screen and add your Google account as a test user. While the project is in
    "Testing" status Google expires the sign-in after 7 days; publish the app ("In production") to avoid that.
 3. Create an OAuth client ID of type **Desktop app**.
-4. Start `gdrive-sync`, press **Google API Client…** and enter the client ID and secret.
+4. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. The dialog
+   shows where to find both values in the Google Cloud console.
 
 The application requests the `https://www.googleapis.com/auth/drive` scope, which is needed to sync folders
 that already exist in your Drive.
@@ -50,8 +51,11 @@ that already exist in your Drive.
    local to Drive). It applies to all folders until you sign out.
 2. **Add Folder…**: pick a Drive folder and an empty local destination.
 3. **Sync Selected** / **Sync All**.
-4. **Automatic Sync**: tick the box, choose the interval and press **Apply**. This installs and starts
+4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.
+
+While you are signed in, your profile picture replaces the **Sign In** button. Clicking it shows your name and
+e-mail address and the **Sign Out** entry.
 
 Behaviour worth knowing:
 
