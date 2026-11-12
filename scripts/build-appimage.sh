@@ -41,6 +41,9 @@ cp "$repo/packaging/appimage/apprun-hook.sh" "$appdir/apprun-hooks/gdrive-sync.s
 export APPIMAGE_EXTRACT_AND_RUN=1
 export PATH="$tools:$PATH" # linuxdeploy finds its plugins in PATH
 export QMAKE="${QMAKE:-/usr/lib/qt5/bin/qmake}"
+# Next to xcb: the automatic sync runs from a systemd timer without a display
+# and then uses the offscreen platform (see main.cpp).
+export EXTRA_PLATFORM_PLUGINS="libqoffscreen.so"
 export LDAI_OUTPUT="$output"
 export LINUXDEPLOY_OUTPUT_VERSION="$version"
 
@@ -60,7 +63,8 @@ echo "Built $build/$output"
 check="$build/appimage-check"
 rm -rf "$check" && mkdir -p "$check"
 (cd "$check" && "$build/$output" --appimage-extract >/dev/null)
-for f in usr/bin/gdrive-sync usr/share/knotifications5/gdrive-sync.notifyrc apprun-hooks/gdrive-sync.sh; do
+for f in usr/bin/gdrive-sync usr/share/knotifications5/gdrive-sync.notifyrc apprun-hooks/gdrive-sync.sh \
+    usr/plugins/platforms/libqxcb.so usr/plugins/platforms/libqoffscreen.so; do
     test -e "$check/squashfs-root/$f" || { echo "missing in the AppImage: $f" >&2; exit 1; }
 done
 for lib in libKF5Wallet libKF5Notifications libKF5KIOFileWidgets libQt5Widgets; do
