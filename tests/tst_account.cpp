@@ -119,7 +119,7 @@ private Q_SLOTS:
         Fixture f;
         prepare(f);
         QVERIFY(login(f));
-        f.core->setDirection(SyncDirection::TwoWay);
+        f.core->setDefaultDirection(SyncDirection::TwoWay);
         const QString refresh = f.server.issuedRefreshTokens().last();
         QCOMPARE(f.secrets.stored(SecretKeys::refreshToken()), refresh);
         QCOMPARE(f.secrets.stored(SecretKeys::clientSecret()), QStringLiteral("my-client-secret"));
@@ -214,7 +214,7 @@ private Q_SLOTS:
         prepare(f);
         f.server.setAccountEmail(QStringLiteral("alice@example.com"));
         QVERIFY(login(f));
-        f.core->setDirection(SyncDirection::DriveToLocal);
+        f.core->setDefaultDirection(SyncDirection::DriveToLocal);
         const int browserVisits = f.browser.opened.size();
 
         // "reboot": a new application instance with the same wallet and config
@@ -222,7 +222,7 @@ private Q_SLOTS:
         QVERIFY(f.initialize());
         QVERIFY(f.core->isLoggedIn());
         QCOMPARE(f.core->accountEmail(), QStringLiteral("alice@example.com"));
-        QCOMPARE(f.core->direction(), SyncDirection::DriveToLocal);
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::DriveToLocal);
         QCOMPARE(f.browser.opened.size(), browserVisits); // no new sign-in needed
 
         // and the restored session really works against Drive
@@ -239,7 +239,7 @@ private Q_SLOTS:
         Fixture f;
         prepare(f);
         QVERIFY(login(f));
-        f.core->setDirection(SyncDirection::TwoWay);
+        f.core->setDefaultDirection(SyncDirection::LocalToDrive);
         const QString folder = f.server.addFolder(QStringLiteral("Docs"));
         QVERIFY(!f.mount(folder, QStringLiteral("Docs")).isEmpty());
         const QString refresh = f.secrets.stored(SecretKeys::refreshToken());
@@ -250,7 +250,8 @@ private Q_SLOTS:
         QCOMPARE(loggedOut.count(), 1);
         QVERIFY(!f.core->isLoggedIn());
         QVERIFY(f.core->accountEmail().isEmpty());
-        QCOMPARE(f.core->direction(), SyncDirection::Unset);
+        // the default direction is a setting of the application, not of the account
+        QCOMPARE(f.core->defaultDirection(), SyncDirection::LocalToDrive);
         QVERIFY(f.core->folders()->folders().isEmpty());
         QVERIFY(f.places.places.isEmpty());
         QTRY_VERIFY(f.secrets.stored(SecretKeys::refreshToken()).isEmpty());
@@ -271,7 +272,6 @@ private Q_SLOTS:
         prepare(f);
         f.server.setAccountEmail(QStringLiteral("alice@example.com"));
         QVERIFY(login(f));
-        f.core->setDirection(SyncDirection::LocalToDrive);
         const QString firstToken = f.secrets.stored(SecretKeys::refreshToken());
         f.core->logout();
 
@@ -280,8 +280,6 @@ private Q_SLOTS:
         QVERIFY(f.core->isLoggedIn());
         QCOMPARE(f.core->accountEmail(), QStringLiteral("bob@example.com"));
         QVERIFY(f.secrets.stored(SecretKeys::refreshToken()) != firstToken);
-        // the direction is asked again for the new login session
-        QCOMPARE(f.core->direction(), SyncDirection::Unset);
         // the consent/account chooser is always requested so another account can be picked
         QVERIFY(f.server.lastAuthorizationQuery()
                     .value(QStringLiteral("prompt"))

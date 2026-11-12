@@ -11,7 +11,7 @@ Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with loca
 
 - C++17, Qt 5 Widgets and KDE Frameworks 5 (targets Ubuntu 24.04 / Plasma 5.27)
 - Sign-in through the web browser (OAuth 2.0 with PKCE); the sign-in data is kept in the KDE wallet
-- Several Drive folders can be mapped simultaneously
+- Several Drive folders, or the whole drive, can be mapped
 - Sync on request and automatic
 - Every deletion must be confirmed before anything is removed
 
@@ -62,13 +62,15 @@ Google Cloud project:
 
 ## Usage
 
-1. **Sign In** with your google account via the browser. Choose the sync direction (two-way, Drive to local,
-   or local to Drive). It applies to all folders until you sign out.
-2. **Add Folder**: pick a Drive folder and a local destination. The destination may already hold files:
+1. **Sign In** with your google account via the browser.
+2. **Add Folder**: pick a Drive folder, or **My Drive** for the whole drive, and a local destination. The destination may already hold files:
    the first sync uploads them to Drive (two-way and local to Drive; with Drive to local they stay local only).
    A file that exists on both sides with different content is asked about, in every direction.
-3. **Sync Selected** / **Sync All**.
-4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
+3. Choose the sync direction of each folder in the **Direction** column (two-way, Drive to local, or local
+   to Drive). New folders start with the default from **Settings → Default Sync Direction** (two-way
+   unless changed).
+4. **Sync Selected** / **Sync All**.
+5. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.
 
 
@@ -113,7 +115,7 @@ The tests run against an in-process mock of the Google OAuth and Drive v3 endpoi
 | Requirement | Tests |
 |---|---|
 | Sign in, sign out, sign in with another account; secrets only in the wallet | `tst_account`, `tst_gui` |
-| Select a Drive folder (not the whole drive) | `tst_sync`, `tst_folders`, `tst_gui` |
+| Select a Drive folder or the whole drive | `tst_sync`, `tst_folders`, `tst_gui` |
 | Destination (empty or not); several independent folders; unmount | `tst_folders`, `tst_sync`, `tst_gui` |
 | Sync on request; directions; conflicts | `tst_sync`, `tst_planner` |
 | Automatic sync (systemd timer, unattended run) | `tst_autosync`, `tst_gui` |

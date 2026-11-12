@@ -184,10 +184,12 @@ QString LogLocationDialog::directory() const
 DirectionDialog::DirectionDialog(QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(i18nc("@title:window", "Sync Direction"));
+    setWindowTitle(i18nc("@title:window", "Default Sync Direction"));
     auto* layout = new QVBoxLayout(this);
     auto* intro = new QLabel(
-        i18n("Choose how files are synced. The choice applies to all folders until you sign out."), this);
+        i18n("Sync direction given to newly added folders. The direction of each folder can be changed "
+             "in the folder list at any time."),
+        this);
     intro->setWordWrap(true);
     layout->addWidget(intro);
     m_twoWay = new QRadioButton(i18n("Two-way: changes and deletions are applied in both directions"), this);
@@ -201,8 +203,9 @@ DirectionDialog::DirectionDialog(QWidget* parent)
     layout->addWidget(m_twoWay);
     layout->addWidget(m_driveToLocal);
     layout->addWidget(m_localToDrive);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok, this);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
 }
 
@@ -314,9 +317,8 @@ QString AddFolderDialog::driveFolderId() const
     const QList<QTreeWidgetItem*> selected = m_tree->selectedItems();
     if (selected.isEmpty() || selected.first()->data(0, PlaceholderRole).toBool())
         return {};
-    const QString id = selected.first()->data(0, IdRole).toString();
-    // The whole drive cannot be mounted, only a folder of it.
-    return id == QLatin1String("root") ? QString() : id;
+    // "root" stands for the whole of My Drive
+    return selected.first()->data(0, IdRole).toString();
 }
 
 QString AddFolderDialog::driveFolderName() const
@@ -350,7 +352,7 @@ void AddFolderDialog::validate()
 {
     QString problem;
     if (driveFolderId().isEmpty())
-        problem = i18n("Select a folder of your Google Drive (the whole drive cannot be mounted).");
+        problem = i18n("Select a folder of your Google Drive, or My Drive for the whole drive.");
     else if (localPath().isEmpty())
         problem = i18n("Choose a local destination folder.");
     else

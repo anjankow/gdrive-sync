@@ -100,9 +100,12 @@ public:
     void cancelLogin();
     void logout();
 
-    /// Chosen once after login; applies to all folders until logout.
-    SyncDirection direction() const;
-    void setDirection(SyncDirection direction);
+    /// Direction given to newly added folders (two-way unless changed in the settings).
+    SyncDirection defaultDirection() const;
+    void setDefaultDirection(SyncDirection direction);
+    SyncDirection folderDirection(const QString& id) const;
+    /// Applies from the folder's next sync. Refused while a sync is running.
+    bool setFolderDirection(const QString& id, SyncDirection direction, QString* error = nullptr);
 
     // folders
     FolderManager* folders() const { return m_folders; }

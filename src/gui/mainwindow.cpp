@@ -9,6 +9,7 @@
 #include <KX11Extras>
 
 #include <QAction>
+#include <QComboBox>
 #include <QDesktopServices>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -28,9 +29,21 @@
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QWidgetAction>
 
 namespace gds {
+
+namespace {
+    /// The mouse wheel scrolls the folder list; it must not change a direction by accident.
+    class DirectionCombo : public QComboBox {
+    public:
+        using QComboBox::QComboBox;
+
+    protected:
+        void wheelEvent(QWheelEvent* event) override { event->ignore(); }
+    };
+}
 
 namespace {
     enum { FolderIdRole = Qt::UserRole + 1 };
@@ -60,10 +73,7 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     auto* accountLabels = new QVBoxLayout;
     m_account = new QLabel(central);
     m_account->setObjectName(QStringLiteral("accountLabel"));
-    m_direction = new QLabel(central);
-    m_direction->setObjectName(QStringLiteral("directionLabel"));
     accountLabels->addWidget(m_account);
-    accountLabels->addWidget(m_direction);
     accountRow->addLayout(accountLabels, 1);
 
     m_login = button(QStringLiteral("im-user"), i18n("Sign In"), "loginButton", central);
@@ -104,6 +114,9 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     m_autoSyncAction
         = settingsMenu->addAction(QIcon::fromTheme(QStringLiteral("chronometer")), i18n("Automatic Sync"));
     m_autoSyncAction->setObjectName(QStringLiteral("actionAutoSync"));
+    m_defaultDirection = settingsMenu->addAction(
+        QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Default Sync Direction"));
+    m_defaultDirection->setObjectName(QStringLiteral("actionDefaultDirection"));
     m_logLocation
         = settingsMenu->addAction(QIcon::fromTheme(QStringLiteral("text-x-log")), i18n("Log Location"));
     m_logLocation->setObjectName(QStringLiteral("actionLogLocation"));
@@ -118,8 +131,8 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     m_folders = new QTreeWidget(foldersBox);
     m_folders->setObjectName(QStringLiteral("folderList"));
     m_folders->setRootIsDecorated(false);
-    m_folders->setHeaderLabels(
-        {i18n("Google Drive folder"), i18n("Local folder"), i18n("Last sync"), i18n("Status")});
+    m_folders->setHeaderLabels({i18n("Google Drive folder"), i18n("Local folder"), i18n("Direction"),
+        i18n("Last sync"), i18n("Status")});
     m_folders->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_folders->header()->setStretchLastSection(true);
     m_folders->setMinimumHeight(220);
@@ -188,6 +201,7 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_apiClient, &QAction::triggered, this, &MainWindow::editCredentials);
     connect(m_autoSyncAction, &QAction::triggered, this, &MainWindow::editAutoSync);
     connect(m_logLocation, &QAction::triggered, this, &MainWindow::editLogLocation);
+    connect(m_defaultDirection, &QAction::triggered, this, &MainWindow::editDefaultDirection);
     connect(m_add, &QPushButton::clicked, this, &MainWindow::addFolder);
     connect(m_unmount, &QPushButton::clicked, this, &MainWindow::unmountSelected);
     connect(m_open, &QPushButton::clicked, this, [this]() {
@@ -306,16 +320,13 @@ void MainWindow::refreshAccount()
     const bool loggedIn = m_core->isLoggedIn();
     if (!m_core->isInitialized()) {
         m_account->setText(i18n("Opening the KDE wallet…"));
-        m_direction->clear();
     } else if (m_core->isLoginInProgress()) {
         m_account->setText(i18n("Waiting for the sign-in in your web browser…"));
     } else if (loggedIn) {
         // who is signed in is shown by the profile picture and its menu
         m_account->clear();
-        m_direction->setText(i18n("Sync direction: %1", directionLabel(m_core->direction())));
     } else {
         m_account->setText(i18n("Not signed in"));
-        m_direction->clear();
     }
     m_login->setText(m_core->isLoginInProgress() ? i18n("Cancel Sign-in") : i18n("Sign In"));
     m_account->setVisible(!m_account->text().isEmpty());
@@ -395,8 +406,26 @@ void MainWindow::refreshFolders()
         item->setText(0, f.driveFolderName);
         item->setText(1, f.localPath);
         item->setText(
-            2, f.lastSync.isValid() ? QLocale().toString(f.lastSync, QLocale::ShortFormat) : i18n("Never"));
-        item->setText(3, f.lastStatus);
+            3, f.lastSync.isValid() ? QLocale().toString(f.lastSync, QLocale::ShortFormat) : i18n("Never"));
+        item->setText(4, f.lastStatus);
+
+        // the direction can be changed at any time; it applies from the next sync
+        auto* combo = new DirectionCombo(m_folders);
+        combo->setObjectName(QStringLiteral("directionCombo"));
+        combo->setProperty("folderId", f.id);
+        for (SyncDirection d :
+            {SyncDirection::TwoWay, SyncDirection::DriveToLocal, SyncDirection::LocalToDrive})
+            combo->addItem(directionLabel(d), int(d));
+        combo->setCurrentIndex(combo->findData(int(f.direction)));
+        const QString id = f.id;
+        // queued: the change rebuilds this list, and with it the combo box that reports it
+        connect(combo, QOverload<int>::of(&QComboBox::activated), this, [this, id, combo](int index) {
+            const auto direction = SyncDirection(combo->itemData(index).toInt());
+            QMetaObject::invokeMethod(
+                this, [this, id, direction]() { changeFolderDirection(id, direction); },
+                Qt::QueuedConnection);
+        });
+        m_folders->setItemWidget(item, 2, combo);
     }
     selectFolder(selected);
     if (m_folders->selectedItems().isEmpty() && m_folders->topLevelItemCount() > 0)
@@ -424,6 +453,21 @@ void MainWindow::refreshButtons()
     m_sync->setEnabled(idle && hasSelection);
     m_syncAll->setEnabled(idle && hasFolders);
     m_cancel->setEnabled(syncing);
+    // not while its folder may be syncing
+    const auto combos = m_folders->findChildren<QComboBox*>(QStringLiteral("directionCombo"));
+    for (QComboBox* combo : combos)
+        combo->setEnabled(idle);
+}
+
+void MainWindow::changeFolderDirection(const QString& id, SyncDirection direction)
+{
+    QString error;
+    if (m_core->setFolderDirection(id, direction, &error)) {
+        log(i18n("Sync direction of \"%1\": %2", folderName(id), directionLabel(direction)));
+    } else {
+        log(error, LogLevel::Warn);
+        refreshFolders(); // show the unchanged direction again
+    }
 }
 
 void MainWindow::onInitialized(bool ok, const QString& error)
@@ -434,10 +478,7 @@ void MainWindow::onInitialized(bool ok, const QString& error)
         m_account->setVisible(true);
         log(error, LogLevel::Error);
         showError(i18nc("@title:window", "KDE Wallet"), error);
-        return;
     }
-    if (m_core->isLoggedIn() && m_core->direction() == SyncDirection::Unset)
-        askDirection();
 }
 
 void MainWindow::editCredentials()
@@ -503,8 +544,6 @@ void MainWindow::onLoginSucceeded()
     log(i18n("Signed in as %1.", m_core->accountEmail()));
     refreshAccount();
     bringToFront();
-    if (m_core->direction() == SyncDirection::Unset)
-        askDirection();
 }
 
 void MainWindow::bringToFront()
@@ -521,14 +560,15 @@ void MainWindow::bringToFront()
         KWindowSystem::activateWindow(windowHandle());
 }
 
-void MainWindow::askDirection()
+void MainWindow::editDefaultDirection()
 {
     auto* dialog = new DirectionDialog(this);
     dialog->setObjectName(QStringLiteral("directionDialog"));
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setDirection(m_core->defaultDirection());
     connect(dialog, &QDialog::accepted, this, [this, dialog]() {
-        m_core->setDirection(dialog->direction());
-        log(i18n("Sync direction: %1", directionLabel(dialog->direction())));
+        m_core->setDefaultDirection(dialog->direction());
+        log(i18n("Default sync direction for new folders: %1", directionLabel(dialog->direction())));
     });
     dialog->open();
 }
@@ -594,10 +634,6 @@ void MainWindow::unmountSelected()
 
 void MainWindow::startSync(bool all)
 {
-    if (m_core->direction() == SyncDirection::Unset) {
-        askDirection();
-        return;
-    }
     const bool started = all ? m_core->syncAll() : m_core->syncFolder(selectedFolderId());
     if (!started)
         log(i18n(
