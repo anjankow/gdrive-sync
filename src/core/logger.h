@@ -3,6 +3,7 @@
 #include <QFile>
 #include <QMutex>
 #include <QString>
+#include <QtGlobal>
 
 namespace gds {
 
@@ -46,6 +47,18 @@ private:
     QFile m_file;
     QString m_directory;
 };
+
+/// Routes messages of Qt and of the KDE libraries and plugins loaded into
+/// the process (qDebug(), qWarning(), ...). The application itself writes
+/// to the log file and never to the console, so only critical and fatal
+/// messages are passed on to \p console (by default the handler that was
+/// installed before, which prints to stderr) and logged as errors. Debug,
+/// info and warning output of the libraries, e.g. leftover debug prints of
+/// file manager plugins, goes to the log file at DEBUG level instead.
+/// When QT_LOGGING_RULES is set (someone debugging the libraries), every
+/// message is passed on to the console as usual.
+/// Returns the handler that was installed before.
+QtMessageHandler installQtMessageRouting(QtMessageHandler console = nullptr);
 
 void logDebug(const QString& message);
 void logInfo(const QString& message);

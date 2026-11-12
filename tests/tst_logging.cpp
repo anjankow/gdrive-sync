@@ -8,12 +8,19 @@
 #include "testutil.h"
 
 #include <QFileInfo>
+#include <QLoggingCategory>
 #include <QRegularExpression>
 
 using namespace gds;
 using namespace gdstest;
 
 namespace {
+QStringList g_console; // what reached the console in libraryOutputStaysOffTheConsole()
+void captureConsole(QtMsgType, const QMessageLogContext&, const QString& message)
+{
+    g_console.append(message);
+}
+
 bool anyContains(const QStringList& lines, const QString& part)
 {
     return std::any_of(lines.cbegin(), lines.cend(), [&](const QString& l) { return l.contains(part); });
@@ -397,6 +404,34 @@ private Q_SLOTS:
         QVERIFY(f.initialize());
         QVERIFY(f.logText().contains(QStringLiteral("Sync direction set to Drive to local")));
         QVERIFY(f.logText().count(QLatin1Char('\n')) > before);
+    }
+
+    void libraryOutputStaysOffTheConsole()
+    {
+        Fixture f;
+        f.createCore(); // opens the log file
+        g_console.clear();
+        const QtMessageHandler qtest = installQtMessageRouting(captureConsole);
+        // what plugins loaded into the process print, e.g. kio-admin's file item action
+        qDebug() << "actions!!!";
+        qDebug() << "urly!!!" << QUrl(QStringLiteral("admin:/tmp/x/"));
+        const QLoggingCategory konsole("org.kde.konsole.keytranslator");
+        qCWarning(konsole) << "Line in keyboard translator file could not be parsed";
+        qInfo("some info");
+        const QLoggingCategory broken("kf.broken");
+        qCCritical(broken) << "something really failed";
+        qInstallMessageHandler(qtest);
+
+        // only the serious message reaches the console
+        QCOMPARE(g_console.size(), 1);
+        QVERIFY(g_console.first().contains(QStringLiteral("something really failed")));
+        // everything is in the log file, the rest at DEBUG level
+        QVERIFY(anyContains(f.logLines(QStringLiteral("ERROR")), QStringLiteral("something really failed")));
+        const QStringList debug = f.logLines(QStringLiteral("DEBUG"));
+        QVERIFY(anyContains(debug, QStringLiteral("Library message (default): actions!!!")));
+        QVERIFY(anyContains(debug, QStringLiteral("urly!!!")));
+        QVERIFY(anyContains(debug, QStringLiteral("Library message (org.kde.konsole.keytranslator)")));
+        QVERIFY(anyContains(debug, QStringLiteral("some info")));
     }
 };
 
