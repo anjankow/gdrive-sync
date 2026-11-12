@@ -14,6 +14,8 @@ struct GoogleEndpoints {
     QString revokeUrl = QStringLiteral("https://oauth2.googleapis.com/revoke");
     QString apiBase = QStringLiteral("https://www.googleapis.com/drive/v3");
     QString uploadBase = QStringLiteral("https://www.googleapis.com/upload/drive/v3");
+    /// Page the browser is sent on to once the sign-in has reached the application.
+    QString signedInUrl = QStringLiteral("https://github.com/anjankow/gdrive-sync");
 
     /// Scope giving access to all files of the user. Required to sync folders
     /// that were not created by this application.
@@ -28,6 +30,7 @@ struct GoogleEndpoints {
         e.revokeUrl = baseUrl + QStringLiteral("/revoke");
         e.apiBase = baseUrl + QStringLiteral("/drive/v3");
         e.uploadBase = baseUrl + QStringLiteral("/upload/drive/v3");
+        e.signedInUrl = baseUrl + QStringLiteral("/signed-in");
         return e;
     }
 };

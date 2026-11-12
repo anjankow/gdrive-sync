@@ -22,7 +22,7 @@ Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with loca
 ```bash
 sudo apt install build-essential cmake ninja-build extra-cmake-modules gettext qtbase5-dev \
   libkf5wallet-dev libkf5config-dev libkf5coreaddons-dev libkf5i18n-dev libkf5notifications-dev \
-  libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev
+  libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev libkf5windowsystem-dev
 ```
 
 ```bash
@@ -55,7 +55,8 @@ Google Cloud project:
 
 ## Usage
 
-1. **Sign In** opens the browser. After the sign-in choose the sync direction (two-way, Drive to local, or
+1. **Sign In** opens the browser. After the sign-in the browser shows the project page and the application
+   window comes to the front. Choose the sync direction (two-way, Drive to local, or
    local to Drive). It applies to all folders until you sign out.
 2. **Add Folder**: pick a Drive folder and an empty local destination.
 3. **Sync Selected** / **Sync All**.

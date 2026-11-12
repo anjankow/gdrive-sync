@@ -24,7 +24,7 @@ option(GDS_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
 
 find_package(Qt5 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Network Concurrent Widgets Test)
 find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS
-    Config CoreAddons DBusAddons I18n KIO Notifications Wallet WidgetsAddons)
+    Config CoreAddons DBusAddons I18n KIO Notifications Wallet WidgetsAddons WindowSystem)
 
 set(CMAKE_AUTOMOC ON)
 

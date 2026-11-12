@@ -100,6 +100,20 @@ private Q_SLOTS:
         QCOMPARE(t.value(QStringLiteral("client_secret")), QStringLiteral("my-client-secret"));
     }
 
+    void browserIsSentToTheProjectPageAfterSignIn()
+    {
+        QCOMPARE(GoogleEndpoints().signedInUrl, QStringLiteral("https://github.com/anjankow/gdrive-sync"));
+        Fixture f;
+        prepare(f);
+        QVERIFY(login(f));
+        // the browser gets an answer from the local redirect address and ends on the project page
+        QTRY_COMPARE(f.browser.finished, 1);
+        QCOMPARE(f.browser.finalError, QString());
+        QCOMPARE(f.browser.finalStatus, 200);
+        QCOMPARE(f.browser.redirects.size(), 2);
+        QCOMPARE(f.browser.redirects.last(), QUrl(f.server.baseUrl() + QStringLiteral("/signed-in")));
+    }
+
     void secretsAreStoredOnlyInTheWallet()
     {
         Fixture f;

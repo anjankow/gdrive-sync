@@ -43,6 +43,7 @@ private:
     void onLoginSucceeded();
     void editCredentials();
     void askDirection();
+    void bringToFront();
     void addFolder();
     void unmountSelected();
     void syncSelected();

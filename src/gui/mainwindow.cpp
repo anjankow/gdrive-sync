@@ -5,6 +5,8 @@
 
 #include <KLocalizedString>
 #include <KMessageBox>
+#include <KWindowSystem>
+#include <KX11Extras>
 
 #include <QAction>
 #include <QDesktopServices>
@@ -475,8 +477,23 @@ void MainWindow::onLoginSucceeded()
 {
     log(i18n("Signed in as %1.", m_core->accountEmail()));
     refreshAccount();
+    bringToFront();
     if (m_core->direction() == SyncDirection::Unset)
         askDirection();
+}
+
+void MainWindow::bringToFront()
+{
+    // The sign-in happened in the browser, which holds the focus now.
+    if (isMinimized())
+        showNormal();
+    show();
+    raise();
+    activateWindow();
+    if (KWindowSystem::isPlatformX11())
+        KX11Extras::forceActiveWindow(winId()); // overrides the focus stealing prevention
+    else if (windowHandle())
+        KWindowSystem::activateWindow(windowHandle());
 }
 
 void MainWindow::askDirection()
