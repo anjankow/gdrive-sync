@@ -78,7 +78,8 @@ public:
     void setSecretsLingerMs(int ms) { m_releaseTimer.setInterval(ms); }
 
     // OAuth client of the user's own Google Cloud project (kept in the secret store)
-    /// Whether a client was saved (from the settings; no wallet access).
+    /// Whether a client is known to be saved (from the settings; no wallet
+    /// access). login() checks the wallet itself.
     bool hasClientCredentials() const;
     /// Read from the secret store: only valid while a lease is held.
     QString clientId() const;
@@ -137,6 +138,8 @@ Q_SIGNALS:
     void initialized(bool ok, const QString& error);
     void loginSucceeded();
     void loginFailed(const QString& error);
+    /// login() found no Google API client in the wallet: it has to be entered first.
+    void clientCredentialsRequired();
     void loggedOut();
     void accountChanged();
     void authorizationLost();

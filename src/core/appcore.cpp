@@ -250,6 +250,11 @@ void AppCore::onStoreOpened(bool ok)
     }
     if (!ok)
         gds::logError(error);
+    if (ok && !m_config->group("Client").readEntry("configured", false) && !clientId().isEmpty()) {
+        // a client saved before this flag existed
+        m_config->group("Client").writeEntry("configured", true);
+        m_configWriter.save();
+    }
     const QVector<SecretsRequest> requests = std::move(m_secretRequests);
     m_secretRequests.clear();
     for (const SecretsRequest& request : requests) {
@@ -421,8 +426,8 @@ void AppCore::login()
             return;
         }
         if (clientId().isEmpty()) {
-            Q_EMIT loginFailed(
-                QStringLiteral("Enter the OAuth client ID of your Google Cloud project first."));
+            logInfo(QStringLiteral("Sign-in needs the Google API client first"));
+            Q_EMIT clientCredentialsRequired();
             return;
         }
         logInfo(QStringLiteral("Sign-in started in the web browser"));

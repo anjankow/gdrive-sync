@@ -353,6 +353,39 @@ private Q_SLOTS:
     }
 
     // --------------------------------------------------------------- account
+    void signInGoesStraightToTheBrowserWhenTheClientIsSaved()
+    {
+        Fixture f;
+        // the client was saved earlier (also by versions that kept no note of it in the settings)
+        f.secrets.preset(SecretKeys::clientId(), QStringLiteral("saved-client"));
+        f.secrets.preset(SecretKeys::clientSecret(), QStringLiteral("saved-secret"));
+        f.createCore();
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(f.initialize());
+        QVERIFY(!f.core->hasClientCredentials());
+
+        QSignalSpy ok(f.core.get(), &AppCore::loginSucceeded);
+        QTest::mouseClick(child<QPushButton>(&window, "loginButton"), Qt::LeftButton);
+        QVERIFY(ok.wait(10000));
+        QCOMPARE(f.browser.opened.size(), 1);
+        QVERIFY(window.findChildren<CredentialsDialog*>().isEmpty()); // no client settings asked
+        QCOMPARE(f.server.lastAuthorizationQuery().value(QStringLiteral("client_id")),
+            QStringLiteral("saved-client"));
+
+        // signing out and in again does not ask for the client either
+        answerNextMessageBox(QDialogButtonBox::Yes);
+        window.findChild<QAction*>(QStringLiteral("actionSignOut"))->trigger();
+        QVERIFY(!f.core->isLoggedIn());
+        QTRY_VERIFY(!f.secrets.isOpen());
+        // the closed wallet is opened again by the sign-in
+        ok.clear();
+        QTest::mouseClick(child<QPushButton>(&window, "loginButton"), Qt::LeftButton);
+        QVERIFY(ok.wait(10000));
+        QCOMPARE(f.browser.opened.size(), 2);
+        QVERIFY(window.findChildren<CredentialsDialog*>().isEmpty());
+    }
+
     void signInAsksForDirectionAndSignOutClears()
     {
         Fixture f;

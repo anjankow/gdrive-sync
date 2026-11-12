@@ -59,10 +59,11 @@ private Q_SLOTS:
         Fixture f;
         f.createCore();
         QVERIFY(f.initialize());
-        QSignalSpy failed(f.core.get(), &AppCore::loginFailed);
+        QSignalSpy required(f.core.get(), &AppCore::clientCredentialsRequired);
         f.core->login();
-        QTRY_COMPARE(failed.count(), 1);
+        QTRY_COMPARE(required.count(), 1);
         QVERIFY(!f.core->isLoggedIn());
+        QVERIFY(!f.core->isLoginInProgress());
         QVERIFY(f.browser.opened.isEmpty());
     }
 

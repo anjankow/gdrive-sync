@@ -211,6 +211,11 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
         showError(i18nc("@title:window", "Sign-in Failed"), error);
     });
     connect(m_core, &AppCore::loggedOut, this, [this]() { log(i18n("Signed out.")); });
+    connect(m_core, &AppCore::clientCredentialsRequired, this, [this]() {
+        refreshAccount();
+        log(i18n("Enter the Google API client of your Google Cloud project, then sign in."));
+        editCredentials();
+    });
     connect(m_core, &AppCore::authorizationLost, this, [this]() {
         log(i18n("Google rejected the stored sign-in. Please sign in again."), LogLevel::Warn);
         refreshAccount();
@@ -464,9 +469,8 @@ void MainWindow::onLoginClicked()
 {
     if (m_core->isLoginInProgress()) {
         m_core->cancelLogin();
-    } else if (!m_core->hasClientCredentials()) {
-        editCredentials();
     } else if (!m_core->isLoggedIn()) {
+        // straight to the browser; the client settings open only when the wallet has no client
         m_core->login();
         log(i18n("Complete the sign-in in your web browser."));
     }
