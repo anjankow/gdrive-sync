@@ -25,7 +25,51 @@ Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with loca
 - Confirmed no personal data is collected nor abused ✔️
 
 
-## Build
+## Install
+
+There are two ways to get the application. In both cases, the [Google Cloud setup](#google-cloud-setup-once)
+below is needed once.
+
+### Download a release
+
+Download a file from the [Releases](https://github.com/anjankow/gdrive-sync/releases) page.
+
+**AppImage** (`gdrive-sync-<version>-x86_64.AppImage`): runs without installing.
+
+```bash
+chmod +x gdrive-sync-*-x86_64.AppImage
+```
+
+```bash
+./gdrive-sync-*-x86_64.AppImage
+```
+
+**Debian package** (`gdrive-sync_<version>_amd64.deb`): installs the application and the libraries it needs.
+
+```bash
+sudo apt install ./gdrive-sync_*_amd64.deb
+```
+
+What the system needs:
+
+| | AppImage | Debian package |
+|---|---|---|
+| Processor | x86_64 | amd64 (x86_64) |
+| Distribution | Linux with glibc 2.39 or newer (Ubuntu 24.04 or newer) | Ubuntu 24.04 (Qt 5.15, KDE Frameworks 5.115) |
+| FUSE | `libfuse2` (`sudo apt install libfuse2t64`), or start it with `--appimage-extract-and-run` | not needed |
+| Qt and KDE libraries | included | installed by `apt` |
+
+Both also need:
+- **KDE wallet service** (`kwalletd5`, part of a KDE Plasma session) with an open D-Bus session: the sign-in
+  data is stored there.
+- **A web browser** for the sign-in.
+- **systemd user session**, only for automatic sync.
+
+The AppImage brings its own Qt, so it may not use the Breeze style of the desktop.
+
+### Build from source
+
+On another distribution or version, build it yourself:
 
 ```bash
 sudo apt install build-essential cmake ninja-build extra-cmake-modules gettext qtbase5-dev \
