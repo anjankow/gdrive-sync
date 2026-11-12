@@ -44,6 +44,11 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Releasing v${version}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Release notes from the changelog
+        # the "Unreleased" section of CHANGELOG.md; a release without it is refused
+        run: |
+          scripts/changelog.sh notes Unreleased > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup
         with:
           extra-packages: dpkg-dev
@@ -65,11 +70,23 @@ jobs:
           mv build/*.deb "dist/gdrive-sync-${version}.deb"
           mv build/*.AppImage "dist/gdrive-sync-${version}.AppImage"
           ls -l dist
-      - name: Tag and publish
+      - name: Changelog, badge, tag and publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v${{ steps.version.outputs.version }}"
+          version="${{ steps.version.outputs.version }}"
+          tag="v${version}"
+          # "## Unreleased" becomes "## <version> – <date>"; the README badge shows the new version
+          scripts/changelog.sh release "$version" "$(date -u +%Y-%m-%d)"
+          sed -i -E "s|img\.shields\.io/badge/release-v[0-9]+\.[0-9]+\.[0-9]+-blue|img.shields.io/badge/release-${tag}-blue|" README.md
+          # commit as the GitHub Actions bot: its no-reply address is built from its account id
+          bot="github-actions[bot]"
+          bot_id="$(gh api "users/${bot}" --jq .id)"
+          git config user.name "$bot"
+          git config user.email "${bot_id}+${bot}@users.noreply.github.com"
+          git commit -am "Release ${tag}"
+          git pull --rebase origin main # in case main moved meanwhile
+          git push origin HEAD:main
           git tag "$tag"
           git push origin "$tag"
-          gh release create "$tag" dist/* --title "$tag" --generate-notes --verify-tag
+          gh release create "$tag" dist/* --title "$tag" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag

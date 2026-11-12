@@ -36,3 +36,7 @@ gds_add_test(tst_gui gdrivesync-gui)
 gds_add_test(tst_responsiveness gdrivesync-gui)
 gds_add_test(tst_places gdrivesync-kde)
 gds_add_test(tst_live_drive)
+
+# the helper of the release workflows
+add_test(NAME changelog_script
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_changelog.sh ${PROJECT_SOURCE_DIR}/scripts/changelog.sh)
