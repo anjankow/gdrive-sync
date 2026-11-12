@@ -124,6 +124,7 @@ private Q_SLOTS:
         QCOMPARE(f.secrets.read(SecretKeys::refreshToken()), refresh);
         QCOMPARE(f.secrets.read(SecretKeys::clientSecret()), QStringLiteral("my-client-secret"));
         // nothing secret in the config or state files
+        f.core->flushSettings();
         QVERIFY(QFile::exists(f.paths().configFile));
         QVERIFY(!appearsOnDisk(f.tmp.path(), refresh));
         QVERIFY(!appearsOnDisk(f.tmp.path(), QStringLiteral("my-client-secret")));

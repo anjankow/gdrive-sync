@@ -44,6 +44,8 @@ public:
 
     /// Opens the secret store and restores a persisted login. Emits initialized().
     void initialize();
+    /// Waits until the settings saved so far are written to disk (they are written in the background).
+    void flushSettings() { m_configWriter.flush(); }
     bool isInitialized() const { return m_initialized; }
 
     // OAuth client of the user's own Google Cloud project (kept in the secret store)
@@ -140,6 +142,7 @@ private:
     OAuthFlow::BrowserOpener m_browser;
     Scheduler m_scheduler;
     KSharedConfig::Ptr m_config;
+    ConfigWriter m_configWriter;
     FolderManager* m_folders = nullptr;
     bool m_initialized = false;
 

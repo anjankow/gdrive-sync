@@ -24,10 +24,11 @@ namespace {
     }
 }
 
-FolderManager::FolderManager(
-    KSharedConfig::Ptr config, QString stateDir, PlacesIntegration* places, QObject* parent)
+FolderManager::FolderManager(KSharedConfig::Ptr config, ConfigWriter* writer, QString stateDir,
+    PlacesIntegration* places, QObject* parent)
     : QObject(parent)
     , m_config(std::move(config))
+    , m_writer(writer)
     , m_stateDir(std::move(stateDir))
     , m_places(places)
 {
@@ -68,7 +69,7 @@ void FolderManager::save()
         g.writeEntry("lastStatus", f.lastStatus);
     }
     root.writeEntry("ids", ids);
-    m_config->sync();
+    m_writer->save();
 }
 
 const FolderConfig* FolderManager::find(const QString& id) const
