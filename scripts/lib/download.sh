@@ -3,8 +3,9 @@
 #   download_package <deb|appimage> <source> <empty directory>
 #
 # <source> is "latest" (newest GitHub release), a release version ("0.1.0"
-# or "v0.1.0"), or "build" (the package CI built for the latest green merge
-# to main; needs the GitHub CLI, signed in). Prints the downloaded file.
+# or "v0.1.0"), or "build" (only for deb: the package CI built for the latest
+# green merge to main; needs the GitHub CLI, signed in). Prints the
+# downloaded file.
 
 GDS_REPO="${GDRIVE_SYNC_REPO:-anjankow/gdrive-sync}"
 GDS_API="${GDRIVE_SYNC_API:-https://api.github.com}"
@@ -22,12 +23,13 @@ download_package() {
     local kind="$1" source="$2" dir="$3" pattern artifact
     case "$kind" in
         deb) pattern='*.deb' artifact='gdrive-sync-deb' ;;
-        appimage) pattern='*.AppImage' artifact='gdrive-sync-appimage' ;;
+        appimage) pattern='*.AppImage' artifact='' ;;
         *) die "unknown package kind: $kind" ;;
     esac
     mkdir -p "$dir"
 
     if [ "$source" = "build" ]; then
+        [ -n "$artifact" ] || die "AppImages are only built for releases; choose latest or a version"
         have_gh || die "the latest build needs the GitHub CLI, signed in: sudo apt install gh && gh auth login"
         local run
         run="$(gh run list --repo "$GDS_REPO" --workflow ci.yml --branch main --event push \

@@ -103,9 +103,10 @@ int main(int argc, char** argv)
     KdePlaces places;
     KdeNotifier notifier;
     AppCore core(GoogleEndpoints(), &secrets, &places, &notifier, AppPaths::defaults(),
-        [](const QUrl& url) { return QDesktopServices::openUrl(url); });
+        [](const QUrl& url) { return ExternalPrograms::openUrl(url); });
     logInfo(QStringLiteral("gdrive-sync %1 started").arg(QStringLiteral(GDS_VERSION)));
     MainWindow window(&core);
+    window.openFolder = [](const QString& path) { ExternalPrograms::openFolder(path); };
     QObject::connect(&service, &KDBusService::activateRequested, &window, [&window]() {
         window.show();
         window.raise();

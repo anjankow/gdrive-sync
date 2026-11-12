@@ -44,9 +44,10 @@ Google Drive folders with local folders.
   Settings → Log Location).
 
 ### Distribution
-- `.deb` package for Ubuntu 24.04 amd64, and an AppImage (x86_64) that runs without installing:
-  download it, make it executable and start it.
-- Both are built by CI on every merge to main. `scripts/run-latest-build.sh` downloads the latest
-  `.deb` build and runs it without installing it.
-- Manual release workflow (patch, minor or major) that publishes the `.deb` and the AppImage as a
-  GitHub release.
+- Each release publishes `gdrive-sync-<version>.deb` (Ubuntu 24.04 amd64) and
+  `gdrive-sync-<version>.AppImage` (x86_64, runs without installing). The release workflow is
+  started by hand and asks only which part of the version to increase (patch, minor or major).
+- `scripts/install-deb.sh` installs the `.deb` of a release, and `scripts/run-appimage.sh`
+  downloads the AppImage of a release into the current directory and starts it.
+- For testing, CI builds a `.deb` on every merge to main; `scripts/run-latest-build.sh` runs it
+  without installing it.

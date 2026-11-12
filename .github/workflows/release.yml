@@ -56,9 +56,15 @@ jobs:
         run: xvfb-run -a dbus-run-session -- ctest --test-dir build --output-on-failure --timeout 300
       - name: Build packages
         run: |
+          version="${{ steps.version.outputs.version }}"
           (cd build && cpack -G DEB)
           dpkg-deb --info build/*.deb
-          scripts/build-appimage.sh build "${{ steps.version.outputs.version }}"
+          scripts/build-appimage.sh build "$version"
+          # release files: gdrive-sync-<version>.deb and gdrive-sync-<version>.AppImage
+          mkdir dist
+          mv build/*.deb "dist/gdrive-sync-${version}.deb"
+          mv build/*.AppImage "dist/gdrive-sync-${version}.AppImage"
+          ls -l dist
       - name: Tag and publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,4 +72,4 @@ jobs:
           tag="v${{ steps.version.outputs.version }}"
           git tag "$tag"
           git push origin "$tag"
-          gh release create "$tag" build/*.deb build/*.AppImage --title "$tag" --generate-notes --verify-tag
+          gh release create "$tag" dist/* --title "$tag" --generate-notes --verify-tag

@@ -34,20 +34,20 @@ below is needed once.
 
 Download a file from the [Releases](https://github.com/anjankow/gdrive-sync/releases) page.
 
-**AppImage** (`gdrive-sync-<version>-x86_64.AppImage`): runs without installing.
+**AppImage** (`gdrive-sync-<version>.AppImage`): runs without installing.
 
 ```bash
-chmod +x gdrive-sync-*-x86_64.AppImage
+chmod +x gdrive-sync-*.AppImage
 ```
 
 ```bash
-./gdrive-sync-*-x86_64.AppImage
+./gdrive-sync-*.AppImage
 ```
 
-**Debian package** (`gdrive-sync_<version>_amd64.deb`): installs the application and the libraries it needs.
+**Debian package** (`gdrive-sync-<version>.deb`): installs the application and the libraries it needs.
 
 ```bash
-sudo apt install ./gdrive-sync_*_amd64.deb
+sudo apt install ./gdrive-sync-*.deb
 ```
 
 What the system needs:

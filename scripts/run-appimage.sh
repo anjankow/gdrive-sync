@@ -2,14 +2,12 @@
 # Downloads the AppImage of gdrive-sync into the current directory and starts
 # it. Nothing is installed.
 #
-#   scripts/run-appimage.sh [latest | <version> | build] [-- <gdrive-sync arguments>]
+#   scripts/run-appimage.sh [latest | <version>] [-- <gdrive-sync arguments>]
 #
 #   latest     the newest GitHub release (default)
 #   <version>  a release, e.g. 0.1.0
-#   build      the AppImage CI built for the latest merge to main
-#              (needs the GitHub CLI, signed in: gh auth login)
 #
-# Later you can start the downloaded file directly: ./gdrive-sync-<version>-x86_64.AppImage
+# Later you can start the downloaded file directly: ./gdrive-sync-<version>.AppImage
 set -euo pipefail
 # shellcheck source=lib/download.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/download.sh"
