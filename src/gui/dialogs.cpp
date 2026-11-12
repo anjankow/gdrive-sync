@@ -2,6 +2,7 @@
 
 #include <KLocalizedString>
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -14,6 +15,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSpinBox>
 #include <QTableWidget>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -31,10 +33,25 @@ CredentialsDialog::CredentialsDialog(const QString& clientId, const QString& cli
 {
     setWindowTitle(i18nc("@title:window", "Google API Client"));
     auto* layout = new QVBoxLayout(this);
-    auto* intro
-        = new QLabel(i18n("Enter the OAuth client of your Google Cloud project (type \"Desktop app\", "
-                          "Google Drive API enabled). The values are stored in the KDE wallet."),
-            this);
+    // How to obtain the two values in the Google Cloud console
+    // (https://developers.google.com/workspace/guides/create-credentials).
+    auto* intro = new QLabel(
+        i18n("<p>How to get the client ID and client secret:</p>"
+             "<ol>"
+             "<li>Create a Google Cloud project at "
+             "<a href=\"https://console.cloud.google.com/projectcreate\">console.cloud.google.com</a>.</li>"
+             "<li>Enable the <b>Google Drive API</b> for the project.</li>"
+             "<li>On the API page click <b>Create credentials</b> and choose <b>Google Drive API</b> "
+             "with <b>User data</b>.</li>"
+             "<li>Add the necessary scope <b>https://www.googleapis.com/auth/drive</b>.</li>"
+             "<li>Choose the application type <b>Desktop app</b>, create the client and copy its "
+             "<b>Client ID</b> and <b>Client secret</b>.</li>"
+             "</ol>"
+             "<p>The values are stored in the KDE wallet.</p>"),
+        this);
+    intro->setObjectName(QStringLiteral("credentialsHelp"));
+    intro->setTextFormat(Qt::RichText);
+    intro->setOpenExternalLinks(true);
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto* form = new QFormLayout;
@@ -65,6 +82,101 @@ QString CredentialsDialog::clientId() const
 QString CredentialsDialog::clientSecret() const
 {
     return m_secret->text().trimmed();
+}
+
+// ------------------------------------------------------------- automatic sync
+
+AutoSyncDialog::AutoSyncDialog(bool enabled, int intervalMinutes, QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle(i18nc("@title:window", "Automatic Sync"));
+    auto* layout = new QVBoxLayout(this);
+    auto* row = new QHBoxLayout;
+    m_enabled = new QCheckBox(i18n("Sync all folders automatically every"), this);
+    m_enabled->setObjectName(QStringLiteral("autoSyncCheck"));
+    m_enabled->setChecked(enabled);
+    m_interval = new QSpinBox(this);
+    m_interval->setObjectName(QStringLiteral("autoSyncInterval"));
+    m_interval->setRange(5, 24 * 60);
+    m_interval->setValue(intervalMinutes > 0 ? intervalMinutes : 30);
+    m_interval->setSuffix(i18n(" minutes"));
+    row->addWidget(m_enabled);
+    row->addWidget(m_interval);
+    row->addStretch(1);
+    layout->addLayout(row);
+    auto* note = new QLabel(
+        i18n("Installs a systemd user timer. Automatic runs never delete files and never resolve "
+             "conflicts; those are left for the next manual sync."),
+        this);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(buttons);
+    connect(m_enabled, &QCheckBox::toggled, m_interval, &QWidget::setEnabled);
+    m_interval->setEnabled(enabled);
+    resize(480, sizeHint().height());
+}
+
+bool AutoSyncDialog::isEnabledChecked() const
+{
+    return m_enabled->isChecked();
+}
+
+int AutoSyncDialog::intervalMinutes() const
+{
+    return m_interval->value();
+}
+
+// ---------------------------------------------------------------- log location
+
+LogLocationDialog::LogLocationDialog(
+    const QString& directory, const QString& defaultDirectory, QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle(i18nc("@title:window", "Log Location"));
+    auto* layout = new QVBoxLayout(this);
+    auto* intro = new QLabel(i18n("Folder for the log file %1:", QStringLiteral("gdrive-sync.log")), this);
+    intro->setObjectName(QStringLiteral("logLocationLabel"));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto* row = new QHBoxLayout;
+    m_path = new QLineEdit(directory, this);
+    m_path->setObjectName(QStringLiteral("logDirectory"));
+    auto* browse
+        = new QPushButton(QIcon::fromTheme(QStringLiteral("document-open-folder")), i18n("Browse"), this);
+    auto* reset = new QPushButton(i18n("Default"), this);
+    reset->setObjectName(QStringLiteral("logDirectoryDefault"));
+    reset->setToolTip(defaultDirectory);
+    row->addWidget(m_path, 1);
+    row->addWidget(browse);
+    row->addWidget(reset);
+    layout->addLayout(row);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(buttons);
+    QPushButton* ok = buttons->button(QDialogButtonBox::Ok);
+    const auto update = [this, ok]() { ok->setEnabled(QDir::isAbsolutePath(m_path->text().trimmed())); };
+    connect(m_path, &QLineEdit::textChanged, this, update);
+    update();
+    connect(reset, &QPushButton::clicked, this,
+        [this, defaultDirectory]() { m_path->setText(defaultDirectory); });
+    connect(browse, &QPushButton::clicked, this, [this]() {
+        auto* dialog = new QFileDialog(this, i18nc("@title:window", "Select the Log Folder"), m_path->text());
+        dialog->setFileMode(QFileDialog::Directory);
+        dialog->setOption(QFileDialog::ShowDirsOnly);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dialog, &QFileDialog::fileSelected, m_path, &QLineEdit::setText);
+        dialog->open();
+    });
+    resize(560, sizeHint().height());
+}
+
+QString LogLocationDialog::directory() const
+{
+    return m_path->text().trimmed();
 }
 
 // ------------------------------------------------------------------ direction
@@ -130,7 +242,7 @@ AddFolderDialog::AddFolderDialog(AppCore* core, QWidget* parent)
     m_path = new QLineEdit(this);
     m_path->setObjectName(QStringLiteral("localPath"));
     auto* browseButton
-        = new QPushButton(QIcon::fromTheme(QStringLiteral("document-open-folder")), i18n("Browse…"), this);
+        = new QPushButton(QIcon::fromTheme(QStringLiteral("document-open-folder")), i18n("Browse"), this);
     row->addWidget(m_path, 1);
     row->addWidget(browseButton);
     layout->addLayout(row);

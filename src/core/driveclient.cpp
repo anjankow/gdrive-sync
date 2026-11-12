@@ -172,7 +172,7 @@ DriveResult<AccountInfo> DriveClient::about()
 {
     HttpRequest req;
     req.url = withQuery(m_endpoints.apiBase + QStringLiteral("/about"),
-        {{QStringLiteral("fields"), QStringLiteral("user(displayName,emailAddress)")}});
+        {{QStringLiteral("fields"), QStringLiteral("user(displayName,emailAddress,photoLink)")}});
     const HttpResponse resp = send(req);
     DriveResult<AccountInfo> result;
     result.error = toError(resp);
@@ -181,6 +181,7 @@ DriveResult<AccountInfo> DriveClient::about()
             = QJsonDocument::fromJson(resp.body).object().value(QStringLiteral("user")).toObject();
         result.value.email = user.value(QStringLiteral("emailAddress")).toString();
         result.value.displayName = user.value(QStringLiteral("displayName")).toString();
+        result.value.photoLink = user.value(QStringLiteral("photoLink")).toString();
     }
     return result;
 }

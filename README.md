@@ -39,7 +39,8 @@ Google Cloud project:
 2. Configure the OAuth consent screen and add your Google account as a test user. While the project is in
    "Testing" status Google expires the sign-in after 7 days; publish the app ("In production") to avoid that.
 3. Create an OAuth client ID of type **Desktop app**.
-4. Start `gdrive-sync`, press **Google API Client…** and enter the client ID and secret.
+4. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. The dialog
+   shows where to find both values in the Google Cloud console.
 
 The application requests the `https://www.googleapis.com/auth/drive` scope, which is needed to sync folders
 that already exist in your Drive.
@@ -48,10 +49,16 @@ that already exist in your Drive.
 
 1. **Sign In** opens the browser. After the sign-in choose the sync direction (two-way, Drive to local, or
    local to Drive). It applies to all folders until you sign out.
-2. **Add Folder…**: pick a Drive folder and an empty local destination.
+2. **Add Folder**: pick a Drive folder and an empty local destination.
 3. **Sync Selected** / **Sync All**.
-4. **Automatic Sync**: tick the box, choose the interval and press **Apply**. This installs and starts
+4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts
    `gdrive-sync.timer` in `~/.config/systemd/user`; unticking removes it again.
+
+5. **Settings → Log Location**: folder of the log file `gdrive-sync.log`. The default is
+   `/tmp/gdrive-sync-<user>`.
+
+While you are signed in, your profile picture replaces the **Sign In** button. Clicking it shows your name and
+e-mail address and the **Sign Out** entry.
 
 Behaviour worth knowing:
 
@@ -61,6 +68,20 @@ Behaviour worth knowing:
 - Google Docs, Sheets and Slides have no file content and are skipped.
 - **Unmount** deletes the local copy of that folder. Google Drive is not touched.
 - **Sign Out** revokes the sign-in at Google and forgets the folder list and the timer. Local files stay.
+
+### Log file
+
+Every event is written with a timestamp and a severity:
+
+| Severity | Events |
+|---|---|
+| `INFO` | Sign-in, sign-out and configuration changes (API client, direction, folders, automatic sync, log location) |
+| `DEBUG` | File syncs: each downloaded, uploaded, deleted or created item, and start and end of a sync |
+| `WARN` | Sync errors, failed sign-ins, a rejected stored sign-in |
+| `ERROR` | Unexpected application errors (wallet not available, systemd refusing the timer, unusable log folder) |
+
+The log folder is created readable by you only. The file never grows beyond 1 MB: once it is full, the oldest
+entries are dropped to make room for new ones. Tokens and the client secret are never logged.
 
 `gdrive-sync --sync` runs one unattended sync of all folders and exits (this is what the timer starts).
 
@@ -91,6 +112,7 @@ The tests run against an in-process mock of the Google OAuth and Drive v3 endpoi
 | Progress bar and synced/remaining bytes | `tst_progress`, `tst_gui` |
 | Folder appears in Dolphin (Places) | `tst_places` |
 | Window always responsive | `tst_responsiveness` |
+| Log file with severities, configurable location | `tst_logging`, `tst_gui` |
 | Drive REST client (paging, retries, resumable upload) | `tst_driveclient` |
 
 ### Live tests against Google Drive

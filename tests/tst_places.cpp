@@ -67,6 +67,7 @@ private Q_SLOTS:
         paths.configFile = tmp.path() + QStringLiteral("/rc");
         paths.stateDir = tmp.path() + QStringLiteral("/state");
         paths.unitDir = tmp.path() + QStringLiteral("/units");
+        paths.logDir = tmp.path() + QStringLiteral("/logs");
         AppCore core(
             GoogleEndpoints::forTestServer(server.baseUrl()), &secrets, &places, nullptr, paths,
             [](const QUrl&) { return false; }, [](const QStringList&, QString*) { return true; });

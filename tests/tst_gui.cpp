@@ -5,12 +5,14 @@
 #include "mainwindow.h"
 #include "testutil.h"
 
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -19,6 +21,7 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QTreeWidget>
 
 using namespace gds;
@@ -332,10 +335,13 @@ private Q_SLOTS:
         MainWindow window(f.core.get());
         window.show();
         auto* login = child<QPushButton>(&window, "loginButton");
+        auto* avatar = child<QToolButton>(&window, "accountButton");
         auto* account = child<QLabel>(&window, "accountLabel");
         QVERIFY(!login->isEnabled()); // wallet not opened yet
         QVERIFY(f.initialize());
         QVERIFY(login->isEnabled());
+        QVERIFY(login->isVisible());
+        QVERIFY(!avatar->isVisible());
         QCOMPARE(account->text(), QStringLiteral("Not signed in"));
         QVERIFY(!child<QPushButton>(&window, "addButton")->isEnabled());
         QVERIFY(!child<QPushButton>(&window, "syncAllButton")->isEnabled());
@@ -350,11 +356,18 @@ private Q_SLOTS:
         QCOMPARE(f.secrets.read(SecretKeys::clientId()), QStringLiteral("gui-client"));
 
         f.server.setAccountEmail(QStringLiteral("carol@example.com"));
+        f.server.setAccountName(QStringLiteral("Carol Example"));
         QSignalSpy ok(f.core.get(), &AppCore::loginSucceeded);
         QTest::mouseClick(login, Qt::LeftButton);
         QVERIFY(ok.wait(10000));
-        QCOMPARE(account->text(), QStringLiteral("Signed in as carol@example.com"));
-        QCOMPARE(login->text(), QStringLiteral("Sign Out"));
+        // who is signed in is shown by the profile picture's menu, not by a label
+        QVERIFY(!account->isVisible());
+        QVERIFY(child<QLabel>(avatar->menu(), "accountMenuInfo")
+                    ->text()
+                    .contains(QStringLiteral("carol@example.com")));
+        const auto labels = window.findChildren<QLabel*>();
+        for (const QLabel* label : labels)
+            QVERIFY2(!label->text().contains(QStringLiteral("Signed in as")), qPrintable(label->text()));
 
         // the direction is asked right after the sign-in
         auto* direction = child<DirectionDialog>(&window, "directionDialog");
@@ -366,11 +379,13 @@ private Q_SLOTS:
         QVERIFY(child<QLabel>(&window, "directionLabel")->text().contains(QStringLiteral("Drive to local")));
         QVERIFY(child<QPushButton>(&window, "addButton")->isEnabled());
 
-        // sign out (after confirmation)
+        // sign out from the account menu (after confirmation)
         answerNextMessageBox(QDialogButtonBox::Yes);
-        QTest::mouseClick(login, Qt::LeftButton);
+        window.findChild<QAction*>(QStringLiteral("actionSignOut"))->trigger();
         QVERIFY(!f.core->isLoggedIn());
         QCOMPARE(account->text(), QStringLiteral("Not signed in"));
+        QVERIFY(login->isVisible());
+        QVERIFY(!avatar->isVisible());
         QCOMPARE(login->text(), QStringLiteral("Sign In"));
         QVERIFY(!child<QPushButton>(&window, "addButton")->isEnabled());
 
@@ -379,8 +394,258 @@ private Q_SLOTS:
         ok.clear();
         QTest::mouseClick(login, Qt::LeftButton);
         QVERIFY(ok.wait(10000));
-        QCOMPARE(account->text(), QStringLiteral("Signed in as dave@example.com"));
+        QTRY_VERIFY(child<QLabel>(avatar->menu(), "accountMenuInfo")
+                        ->text()
+                        .contains(QStringLiteral("dave@example.com")));
         QTRY_VERIFY(window.findChildren<DirectionDialog*>().size() >= 1); // asked again for the new session
+    }
+
+    void profilePictureReplacesTheSignInButton()
+    {
+        Fixture f;
+        f.server.setAccountEmail(QStringLiteral("erin@example.com"));
+        f.server.setAccountName(QStringLiteral("Erin <Example>"));
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        auto* login = child<QPushButton>(&window, "loginButton");
+        auto* avatar = child<QToolButton>(&window, "accountButton");
+
+        // signed in: no sign-in button, the picture is shown instead
+        QVERIFY(!login->isVisible());
+        QVERIFY(avatar->isVisible());
+        QTRY_VERIFY(avatar->property("hasProfilePicture").toBool());
+        QCOMPARE(f.server.requestCount(QStringLiteral("GET /photo")), 1);
+        // it really is the downloaded picture (the mock serves a red image)
+        const QImage shown = avatar->icon().pixmap(avatar->iconSize()).toImage();
+        const QColor centre = shown.pixelColor(shown.width() / 2, shown.height() / 2);
+        QCOMPARE(centre.red(), 255);
+        QCOMPARE(centre.green(), 0);
+        // and it is round: the corners are transparent
+        QCOMPARE(shown.pixelColor(0, 0).alpha(), 0);
+
+        // clicking it opens a menu with the user's name, e-mail address and a sign-out entry
+        QCOMPARE(avatar->popupMode(), QToolButton::InstantPopup);
+        QMenu* menu = avatar->menu();
+        QVERIFY(menu);
+        const QString info = child<QLabel>(menu, "accountMenuInfo")->text();
+        QVERIFY(info.contains(QStringLiteral("Erin &lt;Example&gt;"))); // shown as text, not as markup
+        QVERIFY(info.contains(QStringLiteral("erin@example.com")));
+        const QAction* signOut = window.findChild<QAction*>(QStringLiteral("actionSignOut"));
+        QVERIFY(menu->actions().contains(const_cast<QAction*>(signOut)));
+        QCOMPARE(signOut->text(), QStringLiteral("Sign Out"));
+    }
+
+    void genericIconIsShownWhenTheAccountHasNoPicture()
+    {
+        Fixture f;
+        f.server.setAccountHasPhoto(false);
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        auto* avatar = child<QToolButton>(&window, "accountButton");
+        QVERIFY(avatar->isVisible());
+        QTRY_VERIFY(!f.core->accountEmail().isEmpty()); // account details arrived
+        QTest::qWait(200);
+        QVERIFY(!avatar->property("hasProfilePicture").toBool());
+        QCOMPARE(f.server.requestCount(QStringLiteral("GET /photo")), 0);
+        QVERIFY(child<QLabel>(avatar->menu(), "accountMenuInfo")->text().contains(f.core->accountEmail()));
+    }
+
+    // -------------------------------------------------------------- settings
+    void settingsMenuHoldsApiClientAndAutomaticSync()
+    {
+        Fixture f;
+        f.createCore();
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(f.initialize());
+        auto* settings = child<QToolButton>(&window, "settingsButton");
+        QVERIFY(settings->isVisible());
+        QCOMPARE(settings->text(), QStringLiteral("Settings"));
+        // the settings button comes right after the sign-in button
+        auto* login = child<QPushButton>(&window, "loginButton");
+        QVERIFY(settings->x() > login->x());
+        QCOMPARE(settings->parentWidget(), login->parentWidget());
+
+        QStringList entries;
+        for (const QAction* a : settings->menu()->actions())
+            entries.append(a->text());
+        QCOMPARE(entries,
+            (QStringList {QStringLiteral("Google API Client"), QStringLiteral("Automatic Sync"),
+                QStringLiteral("Log Location")}));
+        // these are no longer part of the main window itself
+        QVERIFY(!child<QWidget>(&window, "credentialsButton"));
+        QVERIFY(!child<QWidget>(&window, "autoSyncCheck"));
+
+        QAction* apiClient = window.findChild<QAction*>(QStringLiteral("actionApiClient"));
+        QAction* autoSync = window.findChild<QAction*>(QStringLiteral("actionAutoSync"));
+        QVERIFY(apiClient->isEnabled());
+        QVERIFY(!autoSync->isEnabled()); // needs a signed-in account
+
+        // the dialog explains where the values are found in the Google Cloud console
+        apiClient->trigger();
+        auto* dialog = window.findChild<CredentialsDialog*>();
+        QVERIFY(dialog);
+        QCOMPARE(dialog->windowTitle(), QStringLiteral("Google API Client"));
+        const QString help = child<QLabel>(dialog, "credentialsHelp")->text();
+        // create a project -> enable the Drive API -> Create credentials -> for the Drive API -> scopes
+        const QStringList steps {QStringLiteral("Create a Google Cloud project"),
+            QStringLiteral("Enable the <b>Google Drive API</b>"), QStringLiteral("Create credentials"),
+            QStringLiteral("choose <b>Google Drive API</b>"),
+            QStringLiteral("https://www.googleapis.com/auth/drive"), QStringLiteral("Desktop app")};
+        int position = -1;
+        for (const QString& step : steps) {
+            const int found = help.indexOf(step, position + 1);
+            QVERIFY2(found > position, qPrintable(step)); // present and in this order
+            position = found;
+        }
+        QVERIFY(help.contains(QStringLiteral("console.cloud.google.com")));
+        QVERIFY(help.contains(QStringLiteral("Client ID")));
+        QVERIFY(help.contains(QStringLiteral("Client secret")));
+        dialog->reject();
+    }
+
+    void noButtonLabelContainsDots()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        AddFolderDialog addFolder(f.core.get());
+        CredentialsDialog credentials {QString(), QString()};
+        AutoSyncDialog autoSync(false, 0);
+        DirectionDialog direction;
+        LogLocationDialog logLocation(QStringLiteral("/tmp/x"), QStringLiteral("/tmp/y"));
+        DeletionDialog deletions(QStringLiteral("Docs"), {QStringLiteral("a")}, {QStringLiteral("b")});
+        ConflictDialog conflicts(QStringLiteral("Docs"), {{QStringLiteral("a"), ConflictKind::BothModified}});
+
+        int checked = 0;
+        const auto check = [&checked](const QString& text) {
+            ++checked;
+            QVERIFY2(!text.contains(QLatin1Char('.')) && !text.contains(QChar(0x2026)), qPrintable(text));
+        };
+        const QList<QWidget*> roots {
+            &window, &addFolder, &credentials, &autoSync, &direction, &logLocation, &deletions, &conflicts};
+        for (QWidget* root : roots) {
+            const auto buttons = root->findChildren<QAbstractButton*>();
+            for (const QAbstractButton* b : buttons)
+                check(b->text());
+            const auto actions = root->findChildren<QAction*>();
+            for (const QAction* a : actions) // menu entries behave like buttons
+                check(a->text());
+        }
+        QVERIFY(checked > 20);
+        QCOMPARE(window.findChild<QPushButton*>(QStringLiteral("addButton"))->text(),
+            QStringLiteral("Add Folder"));
+    }
+
+    void walletFailureWhenSavingTheClientIsShownAsAnError()
+    {
+        Fixture f;
+        f.createCore();
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(f.initialize());
+        f.secrets.failWrites = true;
+        f.secrets.failReason
+            = QStringLiteral("the KDE wallet was closed or locked after the application opened it");
+
+        window.findChild<QAction*>(QStringLiteral("actionApiClient"))->trigger();
+        auto* dialog = window.findChild<CredentialsDialog*>();
+        QVERIFY(dialog);
+        child<QLineEdit>(dialog, "clientId")->setText(QStringLiteral("some-id"));
+        // the error is also shown in a message box, once the dialog is closed
+        answerNextMessageBox(QDialogButtonBox::Ok);
+        dialog->accept();
+        QTest::qWait(400);
+        QVERIFY(!QApplication::activeModalWidget()); // the box was shown and answered
+
+        const QString log = child<QPlainTextEdit>(&window, "log")->toPlainText();
+        const QStringList lines = log.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        const QString line = lines.last();
+        // marked as an error, with the reason and with what happened to the change
+        QVERIFY2(
+            QRegularExpression(QStringLiteral("^\\[\\d\\d:\\d\\d:\\d\\d\\] ERROR ")).match(line).hasMatch(),
+            qPrintable(line));
+        QVERIFY(line.contains(QStringLiteral("could not be stored in the KDE wallet")));
+        QVERIFY(line.contains(QStringLiteral("the KDE wallet was closed or locked")));
+        QVERIFY(line.contains(QStringLiteral("The change was aborted")));
+        QVERIFY(!f.core->hasClientCredentials());
+
+        // a successful save is an INFO line
+        f.secrets.failWrites = false;
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        window.findChild<QAction*>(QStringLiteral("actionApiClient"))->trigger();
+        dialog = window.findChildren<CredentialsDialog*>().last();
+        child<QLineEdit>(dialog, "clientId")->setText(QStringLiteral("some-id"));
+        dialog->accept();
+        QVERIFY(child<QPlainTextEdit>(&window, "log")
+                    ->toPlainText()
+                    .split(QLatin1Char('\n'))
+                    .last()
+                    .contains(QStringLiteral("] INFO  Google API client saved")));
+        QVERIFY(f.core->hasClientCredentials());
+    }
+
+    void logLocationIsChosenInTheSettingsMenu()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        // by default the log is written below the temp directory
+        QCOMPARE(f.core->logDirectory(), f.paths().logDir);
+
+        window.findChild<QAction*>(QStringLiteral("actionLogLocation"))->trigger();
+        auto* dialog = child<LogLocationDialog>(&window, "logLocationDialog");
+        QVERIFY(dialog);
+        auto* edit = child<QLineEdit>(dialog, "logDirectory");
+        QCOMPARE(edit->text(), f.paths().logDir);
+        // the dialog says only what the folder is for
+        QCOMPARE(child<QLabel>(dialog, "logLocationLabel")->text(),
+            QStringLiteral("Folder for the log file gdrive-sync.log:"));
+        for (const QLabel* label : dialog->findChildren<QLabel*>())
+            QVERIFY(!label->text().contains(QStringLiteral("DEBUG"))
+                && !label->text().contains(QStringLiteral("INFO")));
+        const QString chosen = f.tmp.path() + QStringLiteral("/my-logs");
+        edit->setText(chosen);
+        dialog->accept();
+        QCOMPARE(f.core->logDirectory(), chosen);
+        QCOMPARE(f.core->logFilePath(), chosen + QStringLiteral("/gdrive-sync.log"));
+        QVERIFY(QFile::exists(chosen + QStringLiteral("/gdrive-sync.log")));
+
+        // "Default" restores the standard location
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        window.findChild<QAction*>(QStringLiteral("actionLogLocation"))->trigger();
+        dialog = window.findChildren<LogLocationDialog*>().last();
+        QTest::mouseClick(child<QPushButton>(dialog, "logDirectoryDefault"), Qt::LeftButton);
+        QCOMPARE(child<QLineEdit>(dialog, "logDirectory")->text(), f.paths().logDir);
+        dialog->accept();
+        QCOMPARE(f.core->logDirectory(), f.paths().logDir);
+    }
+
+    // ---------------------------------------------------------------- layout
+    void syncedFoldersAreTheLargestAreaAndProgressIsSlim()
+    {
+        Fixture f;
+        QVERIFY(f.startLoggedIn());
+        MainWindow window(f.core.get());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const int folders = child<QWidget>(&window, "foldersBox")->height();
+        const int progress = child<QWidget>(&window, "progressArea")->height();
+        const int log = child<QWidget>(&window, "log")->height();
+        QVERIFY2(folders > window.height() / 2, qPrintable(QString::number(folders)));
+        QVERIFY(folders > 3 * progress);
+        QVERIFY(folders > 2 * log);
+        QVERIFY(child<QProgressBar>(&window, "progressBar")->height() <= 12);
+        QVERIFY(progress < 70);
+
+        // extra height goes to the folder list, not to the progress area
+        window.resize(window.width(), window.height() + 300);
+        QTRY_VERIFY(child<QWidget>(&window, "foldersBox")->height() >= folders + 250);
+        QCOMPARE(child<QWidget>(&window, "progressArea")->height(), progress);
     }
 
     // -------------------------------------------------------- automatic sync
@@ -390,24 +655,35 @@ private Q_SLOTS:
         QVERIFY(f.startLoggedIn());
         MainWindow window(f.core.get());
         window.show();
-        auto* check = child<QCheckBox>(&window, "autoSyncCheck");
-        auto* interval = child<QSpinBox>(&window, "autoSyncInterval");
-        auto* apply = child<QPushButton>(&window, "autoSyncApply");
-        QVERIFY(!check->isChecked()); // off by default
+        QAction* autoSync = window.findChild<QAction*>(QStringLiteral("actionAutoSync"));
+        QVERIFY(autoSync->isEnabled());
         QVERIFY(f.systemctlCalls.isEmpty());
 
+        autoSync->trigger();
+        auto* dialog = child<AutoSyncDialog>(&window, "autoSyncDialog");
+        QVERIFY(dialog);
+        auto* check = child<QCheckBox>(dialog, "autoSyncCheck");
+        auto* interval = child<QSpinBox>(dialog, "autoSyncInterval");
+        QVERIFY(!check->isChecked()); // off by default
         QSignalSpy changed(f.core.get(), &AppCore::autoSyncChanged);
         check->setChecked(true);
         interval->setValue(45);
-        QTest::mouseClick(apply, Qt::LeftButton);
+        dialog->accept();
         QVERIFY(changed.wait(10000));
         QVERIFY(f.core->autoSyncEnabled());
         QCOMPARE(f.core->autoSyncIntervalMinutes(), 45);
         QVERIFY(f.systemctlCalls.contains(QStringLiteral("enable --now gdrive-sync.timer")));
 
+        // the dialog shows the current state when opened again, and can switch it off
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        autoSync->trigger();
+        dialog = window.findChildren<AutoSyncDialog*>().last();
+        check = child<QCheckBox>(dialog, "autoSyncCheck");
+        QVERIFY(check->isChecked());
+        QCOMPARE(child<QSpinBox>(dialog, "autoSyncInterval")->value(), 45);
         changed.clear();
         check->setChecked(false);
-        QTest::mouseClick(apply, Qt::LeftButton);
+        dialog->accept();
         QVERIFY(changed.wait(10000));
         QVERIFY(!f.core->autoSyncEnabled());
     }

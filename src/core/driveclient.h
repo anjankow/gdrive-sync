@@ -56,6 +56,7 @@ template <typename T> struct DriveResult {
 struct AccountInfo {
     QString email;
     QString displayName;
+    QString photoLink; ///< URL of the profile picture, may be empty
 };
 
 /// Blocking client for the Google Drive REST API v3.

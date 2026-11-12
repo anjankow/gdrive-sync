@@ -1,5 +1,6 @@
 #include "foldermanager.h"
 
+#include "logger.h"
 #include "syncstate.h"
 
 #include <KConfigGroup>
@@ -146,6 +147,7 @@ QString FolderManager::addFolder(
     save();
     if (m_places)
         m_places->addPlace(clean, driveFolderName);
+    logInfo(QStringLiteral("Folder added: Drive folder \"%1\" mounted at %2").arg(driveFolderName, clean));
     Q_EMIT foldersChanged();
     return f.id;
 }
@@ -167,6 +169,8 @@ void FolderManager::removeFolder(const QString& id)
     save();
     if (m_places)
         m_places->removePlace(folder.localPath);
+    logInfo(QStringLiteral("Folder unmounted: \"%1\"; deleting the local copy in %2")
+                .arg(folder.driveFolderName, folder.localPath));
     Q_EMIT foldersChanged();
 
     // Deleting a large tree can take long: keep it off the GUI thread.

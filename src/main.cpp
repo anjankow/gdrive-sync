@@ -1,6 +1,7 @@
 #include "appcore.h"
 #include "kdeintegration.h"
 #include "kwalletsecretstore.h"
+#include "logger.h"
 #include "mainwindow.h"
 
 #include <KAboutData>
@@ -19,6 +20,18 @@ using namespace gds;
 
 namespace {
 
+QtMessageHandler previousHandler = nullptr;
+
+/// Unexpected problems reported by Qt or KDE libraries end up in the log as errors.
+void messageHandler(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    if (type == QtCriticalMsg || type == QtFatalMsg)
+        logError(QStringLiteral("%1 (%2)").arg(
+            message, QString::fromUtf8(context.category ? context.category : "")));
+    if (previousHandler)
+        previousHandler(type, context, message);
+}
+
 /// "gdrive-sync --sync": what the systemd timer runs. Syncs all folders
 /// without asking anything; deletions and conflicts are left pending.
 int runUnattended(QApplication& app)
@@ -27,6 +40,7 @@ int runUnattended(QApplication& app)
     KdeNotifier notifier;
     AppCore core(GoogleEndpoints(), &secrets, nullptr, &notifier, AppPaths::defaults(),
         [](const QUrl&) { return false; });
+    logInfo(QStringLiteral("gdrive-sync %1 started for an automatic sync").arg(QStringLiteral(GDS_VERSION)));
     int exitCode = 0;
     // leave a moment for notifications to be delivered before exiting
     const auto quitSoon = [&app]() { QTimer::singleShot(1500, &app, &QCoreApplication::quit); };
@@ -81,6 +95,7 @@ int main(int argc, char** argv)
     about.processCommandLine(&parser);
 
     QNetworkProxyFactory::setUseSystemConfiguration(true);
+    previousHandler = qInstallMessageHandler(messageHandler);
 
     if (parser.isSet(QStringLiteral("sync")))
         return runUnattended(app);
@@ -92,6 +107,7 @@ int main(int argc, char** argv)
     KdeNotifier notifier;
     AppCore core(GoogleEndpoints(), &secrets, &places, &notifier, AppPaths::defaults(),
         [](const QUrl& url) { return QDesktopServices::openUrl(url); });
+    logInfo(QStringLiteral("gdrive-sync %1 started").arg(QStringLiteral(GDS_VERSION)));
     MainWindow window(&core);
     QObject::connect(&service, &KDBusService::activateRequested, &window, [&window]() {
         window.show();

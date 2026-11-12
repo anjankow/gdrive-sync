@@ -5,12 +5,14 @@
 #include <QDialog>
 #include <QHash>
 
+class QCheckBox;
 class QComboBox;
 class QDialogButtonBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QRadioButton;
+class QSpinBox;
 class QTableWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -28,6 +30,30 @@ public:
 private:
     QLineEdit* m_id;
     QLineEdit* m_secret;
+};
+
+/// Option to run the sync automatically (systemd user timer).
+class AutoSyncDialog : public QDialog {
+    Q_OBJECT
+public:
+    AutoSyncDialog(bool enabled, int intervalMinutes, QWidget* parent = nullptr);
+    bool isEnabledChecked() const;
+    int intervalMinutes() const;
+
+private:
+    QCheckBox* m_enabled;
+    QSpinBox* m_interval;
+};
+
+/// Folder of the application's log file.
+class LogLocationDialog : public QDialog {
+    Q_OBJECT
+public:
+    LogLocationDialog(const QString& directory, const QString& defaultDirectory, QWidget* parent = nullptr);
+    QString directory() const;
+
+private:
+    QLineEdit* m_path;
 };
 
 /// Asked once after sign-in; valid until sign-out.

@@ -75,6 +75,8 @@ private Q_SLOTS:
         QVERIFY(login(f));
         QVERIFY(f.core->isLoggedIn());
         QCOMPARE(f.core->accountEmail(), QStringLiteral("alice@example.com"));
+        QCOMPARE(f.core->accountName(), QStringLiteral("Test User"));
+        QCOMPARE(f.core->accountPhotoUrl(), f.server.baseUrl() + QStringLiteral("/photo"));
 
         // the authorization request sent to the browser
         QCOMPARE(f.browser.opened.size(), 1);

@@ -6,26 +6,33 @@
 #include <KLocalizedString>
 #include <KMessageBox>
 
-#include <QCheckBox>
+#include <QAction>
 #include <QDesktopServices>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLocale>
+#include <QMenu>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QSpinBox>
 #include <QTime>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 namespace gds {
 
 namespace {
     enum { FolderIdRole = Qt::UserRole + 1 };
+    const int kAvatarSize = 32;
 
     QPushButton* button(const QString& icon, const QString& text, const char* name, QWidget* parent)
     {
@@ -38,6 +45,7 @@ namespace {
 MainWindow::MainWindow(AppCore* core, QWidget* parent)
     : QMainWindow(parent)
     , m_core(core)
+    , m_nam(new QNetworkAccessManager(this))
 {
     setWindowTitle(i18nc("@title:window", "Google Drive Sync"));
     setWindowIcon(QIcon::fromTheme(QStringLiteral("folder-cloud")));
@@ -46,26 +54,65 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     auto* central = new QWidget(this);
     auto* layout = new QVBoxLayout(central);
 
-    // ---- account
-    auto* accountBox = new QGroupBox(i18n("Account"), central);
-    auto* accountLayout = new QHBoxLayout(accountBox);
+    // ---- account row: status on the left, sign-in / profile picture and settings on the right
+    auto* accountRow = new QHBoxLayout;
     auto* accountLabels = new QVBoxLayout;
-    m_account = new QLabel(accountBox);
+    m_account = new QLabel(central);
     m_account->setObjectName(QStringLiteral("accountLabel"));
-    m_direction = new QLabel(accountBox);
+    m_direction = new QLabel(central);
     m_direction->setObjectName(QStringLiteral("directionLabel"));
     accountLabels->addWidget(m_account);
     accountLabels->addWidget(m_direction);
-    accountLayout->addLayout(accountLabels, 1);
-    m_credentials
-        = button(QStringLiteral("configure"), i18n("Google API Client…"), "credentialsButton", accountBox);
-    m_login = button(QStringLiteral("im-user"), i18n("Sign In"), "loginButton", accountBox);
-    accountLayout->addWidget(m_credentials);
-    accountLayout->addWidget(m_login);
-    layout->addWidget(accountBox);
+    accountRow->addLayout(accountLabels, 1);
 
-    // ---- folders
+    m_login = button(QStringLiteral("im-user"), i18n("Sign In"), "loginButton", central);
+    accountRow->addWidget(m_login);
+
+    // shown instead of the sign-in button while signed in
+    m_accountButton = new QToolButton(central);
+    m_accountButton->setObjectName(QStringLiteral("accountButton"));
+    m_accountButton->setPopupMode(QToolButton::InstantPopup);
+    m_accountButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_accountButton->setAutoRaise(true);
+    m_accountButton->setIconSize(QSize(kAvatarSize, kAvatarSize));
+    m_accountButton->setStyleSheet(QStringLiteral("QToolButton::menu-indicator { image: none; }"));
+    auto* accountMenu = new QMenu(m_accountButton);
+    m_accountInfo = new QLabel(accountMenu);
+    m_accountInfo->setObjectName(QStringLiteral("accountMenuInfo"));
+    m_accountInfo->setTextFormat(Qt::RichText);
+    m_accountInfo->setContentsMargins(12, 8, 12, 8);
+    auto* infoAction = new QWidgetAction(accountMenu);
+    infoAction->setDefaultWidget(m_accountInfo);
+    accountMenu->addAction(infoAction);
+    accountMenu->addSeparator();
+    m_signOut = accountMenu->addAction(QIcon::fromTheme(QStringLiteral("system-log-out")), i18n("Sign Out"));
+    m_signOut->setObjectName(QStringLiteral("actionSignOut"));
+    m_accountButton->setMenu(accountMenu);
+    accountRow->addWidget(m_accountButton);
+
+    m_settings = new QToolButton(central);
+    m_settings->setObjectName(QStringLiteral("settingsButton"));
+    m_settings->setText(i18n("Settings"));
+    m_settings->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
+    m_settings->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_settings->setPopupMode(QToolButton::InstantPopup);
+    auto* settingsMenu = new QMenu(m_settings);
+    m_apiClient = settingsMenu->addAction(
+        QIcon::fromTheme(QStringLiteral("dialog-password")), i18n("Google API Client"));
+    m_apiClient->setObjectName(QStringLiteral("actionApiClient"));
+    m_autoSyncAction
+        = settingsMenu->addAction(QIcon::fromTheme(QStringLiteral("chronometer")), i18n("Automatic Sync"));
+    m_autoSyncAction->setObjectName(QStringLiteral("actionAutoSync"));
+    m_logLocation
+        = settingsMenu->addAction(QIcon::fromTheme(QStringLiteral("text-x-log")), i18n("Log Location"));
+    m_logLocation->setObjectName(QStringLiteral("actionLogLocation"));
+    m_settings->setMenu(settingsMenu);
+    accountRow->addWidget(m_settings);
+    layout->addLayout(accountRow);
+
+    // ---- folders: the main area of the window
     auto* foldersBox = new QGroupBox(i18n("Synced Folders"), central);
+    foldersBox->setObjectName(QStringLiteral("foldersBox"));
     auto* foldersLayout = new QVBoxLayout(foldersBox);
     m_folders = new QTreeWidget(foldersBox);
     m_folders->setObjectName(QStringLiteral("folderList"));
@@ -74,9 +121,10 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
         {i18n("Google Drive folder"), i18n("Local folder"), i18n("Last sync"), i18n("Status")});
     m_folders->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_folders->header()->setStretchLastSection(true);
+    m_folders->setMinimumHeight(220);
     foldersLayout->addWidget(m_folders);
     auto* folderButtons = new QHBoxLayout;
-    m_add = button(QStringLiteral("folder-new"), i18n("Add Folder…"), "addButton", foldersBox);
+    m_add = button(QStringLiteral("folder-new"), i18n("Add Folder"), "addButton", foldersBox);
     m_unmount = button(QStringLiteral("edit-delete"), i18n("Unmount"), "unmountButton", foldersBox);
     m_open = button(
         QStringLiteral("document-open-folder"), i18n("Open in File Manager"), "openButton", foldersBox);
@@ -89,61 +137,56 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     folderButtons->addWidget(m_sync);
     folderButtons->addWidget(m_syncAll);
     foldersLayout->addLayout(folderButtons);
-    layout->addWidget(foldersBox, 2);
+    layout->addWidget(foldersBox, 1);
 
-    // ---- progress
-    auto* progressBox = new QGroupBox(i18n("Progress"), central);
-    auto* progressLayout = new QVBoxLayout(progressBox);
+    // ---- progress: one slim bar and one line of text
+    auto* progressArea = new QWidget(central);
+    progressArea->setObjectName(QStringLiteral("progressArea"));
+    progressArea->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto* progressLayout = new QVBoxLayout(progressArea);
+    progressLayout->setContentsMargins(0, 0, 0, 0);
+    progressLayout->setSpacing(2);
     auto* barRow = new QHBoxLayout;
-    m_progress = new QProgressBar(progressBox);
+    m_progress = new QProgressBar(progressArea);
     m_progress->setObjectName(QStringLiteral("progressBar"));
     m_progress->setRange(0, 1000);
     m_progress->setValue(0);
-    m_cancel = button(QStringLiteral("process-stop"), i18n("Cancel"), "cancelButton", progressBox);
+    m_progress->setTextVisible(false);
+    m_progress->setFixedHeight(10);
+    m_cancel = button(QStringLiteral("process-stop"), i18n("Cancel"), "cancelButton", progressArea);
     barRow->addWidget(m_progress, 1);
     barRow->addWidget(m_cancel);
     progressLayout->addLayout(barRow);
-    m_progressText = new QLabel(i18n("Idle"), progressBox);
+    auto* textRow = new QHBoxLayout;
+    m_progressText = new QLabel(i18n("Idle"), progressArea);
     m_progressText->setObjectName(QStringLiteral("progressText"));
-    m_currentFile = new QLabel(progressBox);
+    m_currentFile = new QLabel(progressArea);
     m_currentFile->setObjectName(QStringLiteral("currentFile"));
     m_currentFile->setTextFormat(Qt::PlainText);
-    progressLayout->addWidget(m_progressText);
-    progressLayout->addWidget(m_currentFile);
-    layout->addWidget(progressBox);
-
-    // ---- automatic sync
-    auto* autoBox = new QGroupBox(i18n("Automatic Sync"), central);
-    auto* autoLayout = new QHBoxLayout(autoBox);
-    m_autoSync = new QCheckBox(i18n("Sync all folders automatically every"), autoBox);
-    m_autoSync->setObjectName(QStringLiteral("autoSyncCheck"));
-    m_interval = new QSpinBox(autoBox);
-    m_interval->setObjectName(QStringLiteral("autoSyncInterval"));
-    m_interval->setRange(5, 24 * 60);
-    m_interval->setValue(30);
-    m_interval->setSuffix(i18n(" minutes"));
-    m_applyAuto = button(QStringLiteral("dialog-ok-apply"), i18n("Apply"), "autoSyncApply", autoBox);
-    autoLayout->addWidget(m_autoSync);
-    autoLayout->addWidget(m_interval);
-    autoLayout->addStretch(1);
-    autoLayout->addWidget(m_applyAuto);
-    autoBox->setToolTip(
-        i18n("Installs a systemd user timer. Automatic runs never delete files and never resolve "
-             "conflicts; those are left for the next manual sync."));
-    layout->addWidget(autoBox);
+    m_currentFile->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    // long file names must not widen the window
+    m_currentFile->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    textRow->addWidget(m_progressText);
+    textRow->addWidget(m_currentFile, 1);
+    progressLayout->addLayout(textRow);
+    layout->addWidget(progressArea);
 
     // ---- log
     m_log = new QPlainTextEdit(central);
     m_log->setObjectName(QStringLiteral("log"));
     m_log->setReadOnly(true);
     m_log->setMaximumBlockCount(2000);
-    layout->addWidget(m_log, 1);
+    m_log->setFixedHeight(110);
+    layout->addWidget(m_log);
 
     setCentralWidget(central);
     resize(900, 680);
 
     connect(m_login, &QPushButton::clicked, this, &MainWindow::onLoginClicked);
-    connect(m_credentials, &QPushButton::clicked, this, &MainWindow::editCredentials);
+    connect(m_signOut, &QAction::triggered, this, &MainWindow::confirmSignOut);
+    connect(m_apiClient, &QAction::triggered, this, &MainWindow::editCredentials);
+    connect(m_autoSyncAction, &QAction::triggered, this, &MainWindow::editAutoSync);
+    connect(m_logLocation, &QAction::triggered, this, &MainWindow::editLogLocation);
     connect(m_add, &QPushButton::clicked, this, &MainWindow::addFolder);
     connect(m_unmount, &QPushButton::clicked, this, &MainWindow::unmountSelected);
     connect(m_open, &QPushButton::clicked, this, [this]() {
@@ -156,7 +199,6 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
         m_core->cancelSync();
         m_progressText->setText(i18n("Cancelling…"));
     });
-    connect(m_applyAuto, &QPushButton::clicked, this, &MainWindow::applyAutoSync);
     connect(m_folders, &QTreeWidget::itemSelectionChanged, this, &MainWindow::refreshButtons);
 
     connect(m_core, &AppCore::initialized, this, &MainWindow::onInitialized);
@@ -164,19 +206,20 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_core, &AppCore::loginSucceeded, this, &MainWindow::onLoginSucceeded);
     connect(m_core, &AppCore::loginFailed, this, [this](const QString& error) {
         refreshAccount();
-        log(i18n("Sign-in failed: %1", error));
-        KMessageBox::error(this, error, i18nc("@title:window", "Sign-in Failed"), KMessageBox::Notify);
+        log(i18n("Sign-in failed: %1", error), LogLevel::Warn);
+        showError(i18nc("@title:window", "Sign-in Failed"), error);
     });
     connect(m_core, &AppCore::loggedOut, this, [this]() { log(i18n("Signed out.")); });
     connect(m_core, &AppCore::authorizationLost, this, [this]() {
-        log(i18n("Google rejected the stored sign-in. Please sign in again."));
+        log(i18n("Google rejected the stored sign-in. Please sign in again."), LogLevel::Warn);
         refreshAccount();
     });
     connect(m_core->folders(), &FolderManager::foldersChanged, this, &MainWindow::refreshFolders);
     connect(m_core->folders(), &FolderManager::folderRemoved, this,
         [this](const QString&, bool ok, const QString& error) {
             m_unmounting = false;
-            log(ok ? i18n("Folder unmounted; the local copy was deleted.") : error);
+            log(ok ? i18n("Folder unmounted; the local copy was deleted.") : error,
+                ok ? LogLevel::Info : LogLevel::Error);
             refreshButtons();
         });
     connect(m_core, &AppCore::syncStarted, this, [this]() {
@@ -193,15 +236,18 @@ MainWindow::MainWindow(AppCore* core, QWidget* parent)
     connect(m_core, &AppCore::autoSyncChanged, this, [this](bool ok, const QString& error) {
         m_autoSyncBusy = false;
         if (!ok) {
-            log(i18n("Automatic sync could not be changed: %1", error));
-            KMessageBox::error(this, error, i18nc("@title:window", "Automatic Sync"), KMessageBox::Notify);
+            log(i18n("Automatic sync could not be changed: %1", error), LogLevel::Error);
+            showError(i18nc("@title:window", "Automatic Sync"), error);
+        } else if (m_core->isLoggedIn()) {
+            log(m_core->autoSyncEnabled()
+                    ? i18n("Automatic sync is on (every %1 minutes).", m_core->autoSyncIntervalMinutes())
+                    : i18n("Automatic sync is off."));
         }
-        refreshAutoSync();
+        refreshButtons();
     });
 
     refreshAccount();
     refreshFolders();
-    refreshAutoSync();
 }
 
 QString MainWindow::selectedFolderId() const
@@ -224,30 +270,104 @@ QString MainWindow::folderName(const QString& id) const
     return f ? f->driveFolderName : id;
 }
 
-void MainWindow::log(const QString& text)
+/// Shows an error box once control is back in the event loop. Opening a
+/// modal box directly from a signal of a dialog that is just closing would
+/// run a nested event loop while that dialog is being torn down.
+void MainWindow::showError(const QString& title, const QString& text)
 {
-    m_log->appendPlainText(
-        QStringLiteral("[%1] %2").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")), text));
+    QMetaObject::invokeMethod(
+        this, [this, title, text]() { KMessageBox::error(this, text, title, KMessageBox::Notify); },
+        Qt::QueuedConnection);
+}
+
+void MainWindow::log(const QString& text, LogLevel level)
+{
+    // every line carries its severity, like the log file
+    m_log->appendPlainText(QStringLiteral("[%1] %2 %3")
+                               .arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")),
+                                   Logger::levelName(level).leftJustified(5), text));
 }
 
 void MainWindow::refreshAccount()
 {
+    const bool loggedIn = m_core->isLoggedIn();
     if (!m_core->isInitialized()) {
         m_account->setText(i18n("Opening the KDE wallet…"));
         m_direction->clear();
     } else if (m_core->isLoginInProgress()) {
         m_account->setText(i18n("Waiting for the sign-in in your web browser…"));
-    } else if (m_core->isLoggedIn()) {
-        m_account->setText(i18n("Signed in as %1", m_core->accountEmail()));
+    } else if (loggedIn) {
+        // who is signed in is shown by the profile picture and its menu
+        m_account->clear();
         m_direction->setText(i18n("Sync direction: %1", directionLabel(m_core->direction())));
     } else {
         m_account->setText(i18n("Not signed in"));
         m_direction->clear();
     }
-    m_login->setText(m_core->isLoginInProgress() ? i18n("Cancel Sign-in")
-            : m_core->isLoggedIn()               ? i18n("Sign Out")
-                                                 : i18n("Sign In"));
+    m_login->setText(m_core->isLoginInProgress() ? i18n("Cancel Sign-in") : i18n("Sign In"));
+    m_account->setVisible(!m_account->text().isEmpty());
+
+    // signed in: the profile picture replaces the sign-in button
+    m_login->setVisible(!loggedIn);
+    m_accountButton->setVisible(loggedIn);
+    if (loggedIn) {
+        const QString name = m_core->accountName();
+        m_accountInfo->setText(name.isEmpty()
+                ? m_core->accountEmail().toHtmlEscaped()
+                : QStringLiteral("<b>%1</b><br>%2")
+                      .arg(name.toHtmlEscaped(), m_core->accountEmail().toHtmlEscaped()));
+        m_accountButton->setToolTip(name.isEmpty() ? m_core->accountEmail() : name);
+        loadAvatar();
+    } else {
+        m_avatarUrl.clear();
+        m_accountInfo->clear();
+    }
     refreshButtons();
+}
+
+/// Fetches the profile picture without blocking; a generic icon is shown meanwhile.
+void MainWindow::loadAvatar()
+{
+    const QString url = m_core->accountPhotoUrl();
+    if (url == m_avatarUrl && !m_accountButton->icon().isNull())
+        return;
+    m_avatarUrl = url;
+    m_accountButton->setIcon(
+        QIcon::fromTheme(QStringLiteral("user-identity"), QIcon::fromTheme(QStringLiteral("im-user"))));
+    m_accountButton->setProperty("hasProfilePicture", false);
+    if (url.isEmpty())
+        return;
+    QNetworkRequest request {QUrl(url)};
+    request.setTransferTimeout(15000);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    QNetworkReply* reply = m_nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
+        reply->deleteLater();
+        QPixmap picture;
+        if (url != m_avatarUrl || reply->error() != QNetworkReply::NoError
+            || !picture.loadFromData(reply->readAll()))
+            return; // keep the generic icon
+        setAvatar(picture);
+    });
+}
+
+void MainWindow::setAvatar(const QPixmap& picture)
+{
+    // round picture, as in Google's own applications
+    const int size = kAvatarSize * 2; // sharp on high-DPI screens
+    QPixmap round(size, size);
+    round.fill(Qt::transparent);
+    QPainter painter(&round);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath circle;
+    circle.addEllipse(0, 0, size, size);
+    painter.setClipPath(circle);
+    painter.drawPixmap(
+        0, 0, picture.scaled(size, size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
+    painter.end();
+    m_accountButton->setIcon(QIcon(round));
+    m_accountButton->setProperty("hasProfilePicture", true);
 }
 
 void MainWindow::refreshFolders()
@@ -280,35 +400,27 @@ void MainWindow::refreshButtons()
     const bool hasFolders = !m_core->folders()->folders().isEmpty();
     const bool idle = loggedIn && !syncing && !m_unmounting;
     m_login->setEnabled(ready);
-    m_credentials->setEnabled(ready && !loggedIn && !m_core->isLoginInProgress());
+    m_settings->setEnabled(ready);
+    // the client cannot change under a running login session
+    m_apiClient->setEnabled(ready && !loggedIn && !m_core->isLoginInProgress());
+    m_apiClient->setToolTip(loggedIn ? i18n("Sign out to change the Google API client.") : QString());
+    m_autoSyncAction->setEnabled(loggedIn && !m_autoSyncBusy);
     m_add->setEnabled(idle);
     m_unmount->setEnabled(idle && hasSelection);
     m_open->setEnabled(hasSelection);
     m_sync->setEnabled(idle && hasSelection);
     m_syncAll->setEnabled(idle && hasFolders);
     m_cancel->setEnabled(syncing);
-    m_autoSync->setEnabled(loggedIn && !m_autoSyncBusy);
-    m_interval->setEnabled(loggedIn && !m_autoSyncBusy);
-    m_applyAuto->setEnabled(loggedIn && !m_autoSyncBusy);
-}
-
-void MainWindow::refreshAutoSync()
-{
-    const bool enabled = m_core->autoSyncEnabled();
-    m_autoSync->setChecked(enabled);
-    if (enabled && m_core->autoSyncIntervalMinutes() > 0)
-        m_interval->setValue(m_core->autoSyncIntervalMinutes());
-    refreshButtons();
 }
 
 void MainWindow::onInitialized(bool ok, const QString& error)
 {
     refreshAccount();
-    refreshAutoSync();
     if (!ok) {
         m_account->setText(i18n("KDE wallet not available"));
-        log(error);
-        KMessageBox::error(this, error, i18nc("@title:window", "KDE Wallet"), KMessageBox::Notify);
+        m_account->setVisible(true);
+        log(error, LogLevel::Error);
+        showError(i18nc("@title:window", "KDE Wallet"), error);
         return;
     }
     if (m_core->isLoggedIn() && m_core->direction() == SyncDirection::Unset)
@@ -320,8 +432,13 @@ void MainWindow::editCredentials()
     auto* dialog = new CredentialsDialog(m_core->clientId(), m_core->clientSecret(), this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(dialog, &QDialog::accepted, this, [this, dialog]() {
-        if (!m_core->setClientCredentials(dialog->clientId(), dialog->clientSecret()))
-            log(i18n("The Google API client could not be stored in the KDE wallet."));
+        QString error;
+        if (!m_core->setClientCredentials(dialog->clientId(), dialog->clientSecret(), &error)) {
+            log(error, LogLevel::Error);
+            showError(i18nc("@title:window", "Google API Client"), error);
+        } else {
+            log(i18n("Google API client saved in the KDE wallet."));
+        }
         refreshButtons();
     });
     dialog->open();
@@ -331,20 +448,26 @@ void MainWindow::onLoginClicked()
 {
     if (m_core->isLoginInProgress()) {
         m_core->cancelLogin();
-    } else if (m_core->isLoggedIn()) {
-        const auto answer = KMessageBox::warningContinueCancel(this,
-            i18n("Sign out of %1?\n\nThe stored sign-in is revoked and the list of synced folders and the "
-                 "automatic sync are removed. Files already on this computer are kept.",
-                m_core->accountEmail()),
-            i18nc("@title:window", "Sign Out"), KGuiItem(i18n("Sign Out"), QStringLiteral("system-log-out")));
-        if (answer == KMessageBox::Continue)
-            m_core->logout();
     } else if (!m_core->hasClientCredentials()) {
         editCredentials();
-    } else {
+    } else if (!m_core->isLoggedIn()) {
         m_core->login();
         log(i18n("Complete the sign-in in your web browser."));
     }
+    refreshAccount();
+}
+
+void MainWindow::confirmSignOut()
+{
+    if (!m_core->isLoggedIn())
+        return;
+    const auto answer = KMessageBox::warningContinueCancel(this,
+        i18n("Sign out of %1?\n\nThe stored sign-in is revoked and the list of synced folders and the "
+             "automatic sync are removed. Files already on this computer are kept.",
+            m_core->accountEmail()),
+        i18nc("@title:window", "Sign Out"), KGuiItem(i18n("Sign Out"), QStringLiteral("system-log-out")));
+    if (answer == KMessageBox::Continue)
+        m_core->logout();
     refreshAccount();
 }
 
@@ -378,7 +501,7 @@ void MainWindow::addFolder()
         const QString id = m_core->folders()->addFolder(
             dialog->driveFolderId(), dialog->driveFolderName(), dialog->localPath(), &error);
         if (id.isEmpty()) {
-            KMessageBox::error(this, error, i18nc("@title:window", "Add Folder"), KMessageBox::Notify);
+            showError(i18nc("@title:window", "Add Folder"), error);
             return;
         }
         log(i18n("Added \"%1\". Press \"Sync Selected\" to download it.", dialog->driveFolderName()));
@@ -405,7 +528,7 @@ void MainWindow::unmountSelected()
         m_unmounting = true;
         refreshButtons();
     } else {
-        log(error);
+        log(error, LogLevel::Warn);
     }
 }
 
@@ -431,11 +554,34 @@ void MainWindow::syncAll()
     startSync(true);
 }
 
-void MainWindow::applyAutoSync()
+void MainWindow::editAutoSync()
 {
-    m_autoSyncBusy = true;
-    refreshButtons();
-    m_core->setAutoSync(m_autoSync->isChecked(), m_interval->value());
+    auto* dialog = new AutoSyncDialog(m_core->autoSyncEnabled(), m_core->autoSyncIntervalMinutes(), this);
+    dialog->setObjectName(QStringLiteral("autoSyncDialog"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        m_autoSyncBusy = true;
+        refreshButtons();
+        m_core->setAutoSync(dialog->isEnabledChecked(), dialog->intervalMinutes());
+    });
+    dialog->open();
+}
+
+void MainWindow::editLogLocation()
+{
+    auto* dialog = new LogLocationDialog(m_core->logDirectory(), m_core->defaultLogDirectory(), this);
+    dialog->setObjectName(QStringLiteral("logLocationDialog"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        QString error;
+        if (m_core->setLogDirectory(dialog->directory(), &error)) {
+            log(i18n("Log file: %1", m_core->logFilePath()));
+        } else {
+            log(i18n("The log location could not be changed: %1", error), LogLevel::Error);
+            showError(i18nc("@title:window", "Log Location"), error);
+        }
+    });
+    dialog->open();
 }
 
 void MainWindow::onProgress(const SyncProgress& progress)
@@ -468,9 +614,11 @@ void MainWindow::onDeletions(const QString& folderId, const QStringList& local, 
 
 void MainWindow::onFolderFinished(const SyncResult& result)
 {
-    log(QStringLiteral("%1: %2").arg(folderName(result.folderId), formatResult(result)));
+    const bool failed = result.status == SyncResult::Failed || result.status == SyncResult::AuthRequired;
+    log(QStringLiteral("%1: %2").arg(folderName(result.folderId), formatResult(result)),
+        failed ? LogLevel::Warn : LogLevel::Info);
     for (const QString& e : result.errors)
-        log(i18n("  Error: %1", e));
+        log(i18n("  Error: %1", e), LogLevel::Warn);
     for (const QString& s : result.skipped)
         log(i18n("  Skipped: %1", s));
 }
