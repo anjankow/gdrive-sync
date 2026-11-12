@@ -79,8 +79,11 @@ jobs:
           # "## Unreleased" becomes "## <version> – <date>"; the README badge shows the new version
           scripts/changelog.sh release "$version" "$(date -u +%Y-%m-%d)"
           sed -i -E "s|img\.shields\.io/badge/release-v[0-9]+\.[0-9]+\.[0-9]+-blue|img.shields.io/badge/release-${tag}-blue|" README.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # commit as the GitHub Actions bot: its no-reply address is built from its account id
+          bot="github-actions[bot]"
+          bot_id="$(gh api "users/${bot}" --jq .id)"
+          git config user.name "$bot"
+          git config user.email "${bot_id}+${bot}@users.noreply.github.com"
           git commit -am "Release ${tag}"
           git pull --rebase origin main # in case main moved meanwhile
           git push origin HEAD:main
