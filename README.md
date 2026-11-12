@@ -47,7 +47,10 @@ Google Cloud project:
 3. Search for Google Drive API or go to https://console.cloud.google.com/marketplace/product/google/drive.googleapis.com.
    Enable it.
 4. Create credentials → OAuth Client ID → Desktop App → select scope `https://www.googleapis.com/auth/drive`
-5. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. Extract them from the secret JSON file received from gcloud.
+5. Add yourself as a test user: **Google Auth platform → Audience → Test users → Add users**, enter the Google
+   account you will sign in with. Without it the sign-in fails with "Access blocked: … has not completed the
+   Google verification process".
+6. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. Extract them from the secret JSON file received from gcloud.
 
 
 ## Usage
