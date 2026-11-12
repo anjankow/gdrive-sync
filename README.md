@@ -1,4 +1,8 @@
+[![CI](https://github.com/anjankow/gdrive-sync/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/anjankow/gdrive-sync/actions/workflows/ci.yml)
+
 # gdrive-sync
+
+![Google Drive](https://img.shields.io/badge/Google%20Drive-%234285F4.svg?style=for-the-badge&logo=googledrive&logoColor=white)
 
 Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with local directories.
 
@@ -13,7 +17,7 @@ Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with loca
 
 
 > [!NOTE] 
-> 100% vibe-coded by Claude and rigorously tested by @anjankow. 
+> 100% vibe-coded by Claude Code and rigorously tested by @anjankow. 
 
 - Confirmed working ✔️
 - Confirmed no data lost ✔️
