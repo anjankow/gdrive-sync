@@ -17,7 +17,7 @@ runs:
   using: composite
   steps:
     - name: Restore downloaded packages
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/apt-archives
         key: apt-ubuntu-24.04-${{ hashFiles('.github/actions/setup/action.yml') }}-${{ inputs.extra-packages }}-${{ inputs.ccache-key != '' }}
@@ -49,7 +49,7 @@ runs:
 
     - name: Restore compiler cache
       if: inputs.ccache-key != ''
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ccache
         key: ccache-${{ inputs.ccache-key }}-${{ github.sha }}
