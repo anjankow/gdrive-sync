@@ -98,6 +98,9 @@ void OAuthFlow::onNewConnection()
 {
     while (m_server && m_server->hasPendingConnections()) {
         QTcpSocket* socket = m_server->nextPendingConnection();
+        // The socket must outlive the listener: the answer to the browser is still
+        // being sent when the listener is closed and deleted after the redirect.
+        socket->setParent(this);
         connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
         connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
             if (!socket->canReadLine())
@@ -119,6 +122,13 @@ static void respond(QTcpSocket* socket, const QByteArray& status, const QString&
                                 .toUtf8();
     socket->write("HTTP/1.1 " + status + "\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "
         + QByteArray::number(html.size()) + "\r\nConnection: close\r\n\r\n" + html);
+    socket->disconnectFromHost();
+}
+
+static void redirect(QTcpSocket* socket, const QString& target)
+{
+    socket->write("HTTP/1.1 302 Found\r\nLocation: " + QUrl(target).toEncoded()
+        + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     socket->disconnectFromHost();
 }
 
@@ -153,8 +163,7 @@ void OAuthFlow::handleRequest(QTcpSocket* socket, const QByteArray& requestLine)
         finishFailed(QStringLiteral("Google sign-in failed: %1").arg(error));
         return;
     }
-    respond(socket, "200 OK",
-        QStringLiteral("Sign-in complete. You can close this page and return to the application."));
+    redirect(socket, m_endpoints.signedInUrl);
     stopListening();
     exchangeCode(query.queryItemValue(QStringLiteral("code"), QUrl::FullyDecoded));
 }

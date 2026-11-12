@@ -6,6 +6,7 @@
 #include "testutil.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -66,6 +67,30 @@ class TestGui : public QObject {
     Q_OBJECT
 private Q_SLOTS:
     // ------------------------------------------------------------ deletions
+    void windowTakesTheFocusAfterSignIn()
+    {
+        Fixture f;
+        f.createCore();
+        QVERIFY(f.initialize());
+        QVERIFY(f.core->setClientCredentials(QStringLiteral("gui-client"), QStringLiteral("gui-secret")));
+        MainWindow window(f.core.get());
+        window.show();
+        // the browser is in front while the user signs in
+        QWidget browser;
+        browser.show();
+        browser.activateWindow();
+        window.showMinimized();
+        QTRY_VERIFY(browser.isActiveWindow());
+
+        QSignalSpy ok(f.core.get(), &AppCore::loginSucceeded);
+        f.core->login();
+        QVERIFY(ok.wait(10000));
+        QTRY_VERIFY(!window.isMinimized());
+        QTRY_VERIFY(!browser.isActiveWindow());
+        QWidget* active = QApplication::activeWindow();
+        QVERIFY(active == &window || active->parentWidget() == &window); // the window or its dialog
+    }
+
     void deletionDialogListsEveryFileAndDefaultsToCancel()
     {
         DeletionDialog dialog(QStringLiteral("Docs"), {QStringLiteral("a.txt"), QStringLiteral("dir/")},

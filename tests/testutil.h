@@ -70,11 +70,21 @@ public:
         QNetworkRequest req(url);
         req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
         QNetworkReply* reply = nam.get(req);
-        connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+        connect(reply, &QNetworkReply::redirected, this, [this](const QUrl& to) { redirects.append(to); });
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+            reply->deleteLater();
+            finalStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            finalError = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+            ++finished;
+        });
         return true;
     }
     QNetworkAccessManager nam;
     QList<QUrl> opened;
+    QList<QUrl> redirects; ///< every page the sign-in sent the browser on to
+    int finalStatus = 0; ///< HTTP status of the page the browser ended on (0: no answer)
+    QString finalError; ///< why that page could not be loaded; empty when it was
+    int finished = 0;
     bool refuse = false;
 };
 

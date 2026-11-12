@@ -26,7 +26,7 @@ Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with loca
 ```bash
 sudo apt install build-essential cmake ninja-build extra-cmake-modules gettext qtbase5-dev \
   libkf5wallet-dev libkf5config-dev libkf5coreaddons-dev libkf5i18n-dev libkf5notifications-dev \
-  libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev
+  libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev libkf5windowsystem-dev
 ```
 
 ```bash
@@ -51,13 +51,15 @@ Google Cloud project:
 3. Search for Google Drive API or go to https://console.cloud.google.com/marketplace/product/google/drive.googleapis.com.
    Enable it.
 4. Create credentials → OAuth Client ID → Desktop App → select scope `https://www.googleapis.com/auth/drive`
-5. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. Extract them from the secret JSON file received from gcloud.
+5. Add yourself as a test user: **Google Auth platform → Audience → Test users → Add users**, enter the Google
+   account you will sign in with.
+6. Start `gdrive-sync`, open **Settings → Google API Client** and enter the client ID and secret. Extract them from the secret JSON file received from gcloud.
 
 
 ## Usage
 
-1. **Sign In** opens the browser. After the sign-in choose the sync direction (two-way, Drive to local, or
-   local to Drive). It applies to all folders until you sign out.
+1. **Sign In** with your google account via the browser. Choose the sync direction (two-way, Drive to local,
+   or local to Drive). It applies to all folders until you sign out.
 2. **Add Folder**: pick a Drive folder and an empty local destination.
 3. **Sync Selected** / **Sync All**.
 4. **Settings → Automatic Sync**: tick the box and choose the interval. This installs and starts

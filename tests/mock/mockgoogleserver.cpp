@@ -468,6 +468,10 @@ void MockGoogleServer::handle(QTcpSocket* socket, const Request& req)
         handleToken(socket, req);
         return;
     }
+    if (req.path == QLatin1String("/signed-in")) { // stands for the page shown after the sign-in
+        reply(socket, 200, "signed in", {}, "text/plain");
+        return;
+    }
     if (req.path == QLatin1String("/revoke")) {
         QString token = parseForm(req.body).value(QStringLiteral("token"));
         if (token.isEmpty())
