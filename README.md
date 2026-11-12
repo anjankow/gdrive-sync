@@ -1,4 +1,5 @@
 [![CI](https://github.com/anjankow/gdrive-sync/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/anjankow/gdrive-sync/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/anjankow/gdrive-sync)](https://github.com/anjankow/gdrive-sync/releases/latest)
 
 # gdrive-sync
 
