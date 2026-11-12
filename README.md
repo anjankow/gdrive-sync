@@ -72,9 +72,6 @@ Google Cloud project:
 
 ## Behavior
 
-- The KDE wallet is opened only when an action needs the sign-in data (a sync, the Drive folder browser,
-  signing in or out, the Google API client settings) and closed again shortly afterwards. If the wallet is
-  closed at that moment, it asks for its password once.
 - Files deleted by a sync are moved to the trash (local trash and Drive trash), never destroyed directly.
 - Automatic runs never delete anything and never resolve conflicts. They show a notification, and the next
   manual sync asks you.
