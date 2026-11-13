@@ -76,9 +76,11 @@ jobs:
         run: |
           version="${{ steps.version.outputs.version }}"
           tag="v${version}"
-          # "## Unreleased" becomes "## <version> – <date>"; the README badge shows the new version
+          # "## Unreleased" becomes "## <version> – <date>"; the README badge and download links show the new version
           scripts/changelog.sh release "$version" "$(date -u +%Y-%m-%d)"
           sed -i -E "s|img\.shields\.io/badge/release-v[0-9]+\.[0-9]+\.[0-9]+-blue|img.shields.io/badge/release-${tag}-blue|" README.md
+          # the download links of the install section point to the files of the new release
+          sed -i -E "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/gdrive-sync-[0-9]+\.[0-9]+\.[0-9]+\.|releases/download/${tag}/gdrive-sync-${version}.|g" README.md
           # commit as the GitHub Actions bot: its no-reply address is built from its account id
           bot="github-actions[bot]"
           bot_id="$(gh api "users/${bot}" --jq .id)"
