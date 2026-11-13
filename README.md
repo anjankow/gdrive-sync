@@ -29,67 +29,39 @@ Google Drive sync for Linux (KDE). Syncs selected Google Drive folders with loca
 
 ## Install
 
-There are two ways to get the application. In both cases, the [Google Cloud setup](#google-cloud-setup-once)
-below is needed once.
+Needs the KDE wallet service (`kwalletd5`) with a D-Bus session, a web browser for the sign-in, and a
+systemd user session for automatic sync. After installing, do the
+[Google Cloud setup](#google-cloud-setup-once) once.
 
-### Download a release
-
-Download a file from the [Releases](https://github.com/anjankow/gdrive-sync/releases) page.
-
-**AppImage** (`gdrive-sync-<version>.AppImage`): runs without installing.
+The recommended way is to download the [release artifacts](https://github.com/anjankow/gdrive-sync/releases).
+The scripts in `scripts/` are optional helpers if you prefer to clone the repository:
 
 ```bash
-chmod +x gdrive-sync-*.AppImage
+git clone https://github.com/anjankow/gdrive-sync.git && cd gdrive-sync
 ```
+
+### Debian package (Ubuntu 24.04, amd64)
 
 ```bash
-./gdrive-sync-*.AppImage
+curl -fLO https://github.com/anjankow/gdrive-sync/releases/download/v0.1.0/gdrive-sync-0.1.0.deb && sudo apt install ./gdrive-sync-*.deb
 ```
 
-**Debian package** (`gdrive-sync-<version>.deb`): installs the application and the libraries it needs.
+Or from a clone: `scripts/install-deb.sh`
+
+### AppImage (x86_64, glibc 2.39 or newer)
+
+Runs without installing. Needs `libfuse2` (`sudo apt install libfuse2t64`).
 
 ```bash
-sudo apt install ./gdrive-sync-*.deb
+curl -fLO https://github.com/anjankow/gdrive-sync/releases/download/v0.1.0/gdrive-sync-0.1.0.AppImage && chmod +x gdrive-sync-*.AppImage && ./gdrive-sync-*.AppImage
 ```
 
-What the system needs:
-
-| | AppImage | Debian package |
-|---|---|---|
-| Processor | x86_64 | amd64 (x86_64) |
-| Distribution | Linux with glibc 2.39 or newer (Ubuntu 24.04 or newer) | Ubuntu 24.04 (Qt 5.15, KDE Frameworks 5.115) |
-| FUSE | `libfuse2` (`sudo apt install libfuse2t64`), or start it with `--appimage-extract-and-run` | not needed |
-| Qt and KDE libraries | included | installed by `apt` |
-
-Both also need:
-- **KDE wallet service** (`kwalletd5`, part of a KDE Plasma session) with an open D-Bus session: the sign-in
-  data is stored there.
-- **A web browser** for the sign-in.
-- **systemd user session**, only for automatic sync.
-
-The AppImage brings its own Qt, so it may not use the Breeze style of the desktop.
+Or from a clone: `scripts/run-appimage.sh`
 
 ### Build from source
 
-On another distribution or version, build it yourself:
-
-```bash
-sudo apt install build-essential cmake ninja-build extra-cmake-modules gettext qtbase5-dev \
-  libkf5wallet-dev libkf5config-dev libkf5coreaddons-dev libkf5i18n-dev libkf5notifications-dev \
-  libkf5kio-dev libkf5widgetsaddons-dev libkf5dbusaddons-dev libkf5windowsystem-dev
-```
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-```
-
-```bash
-cmake --build build
-```
-
-```bash
-sudo cmake --install build
-```
+For other distributions or versions. Detailed instructions are in
+[CONTRIBUTING.md](CONTRIBUTING.md#build-from-source).
 
 ## Google Cloud setup (once)
 
@@ -129,54 +101,3 @@ Google Cloud project:
 - **Unmount** deletes the local copy of that folder. For a folder that already held files when it was
   added, you choose to keep all its local files or delete all of them. Google Drive is not touched.
 - **Sign Out** revokes the sign-in at Google and forgets the folder list and the timer (if automatic sync is enabled). Local files stay.
-
-
-# Internals
-
-## Layout
-
-- `src/core`: application logic without widgets (OAuth, Drive client, planner, sync engine, folders, timer)
-- `src/kde`: KWallet, Places and notification back ends
-- `src/gui`: main window and dialogs
-- `tests`: test suites and the mock Google server
-- `scripts`: version bump helper and the script that runs the latest CI build
-
-
-## Tests
-
-```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTING=ON
-```
-
-```bash
-cmake --build build
-```
-
-```bash
-xvfb-run -a dbus-run-session -- ctest --test-dir build --output-on-failure
-```
-
-The tests run against an in-process mock of the Google OAuth and Drive v3 endpoints (`tests/mock`).
-
-| Requirement | Tests |
-|---|---|
-| Sign in, sign out, sign in with another account; secrets only in the wallet | `tst_account`, `tst_gui` |
-| Select a Drive folder or the whole drive | `tst_sync`, `tst_folders`, `tst_gui` |
-| Destination (empty or not); several independent folders; unmount | `tst_folders`, `tst_sync`, `tst_gui` |
-| Sync on request; directions; conflicts | `tst_sync`, `tst_planner` |
-| Automatic sync (systemd timer, unattended run) | `tst_autosync`, `tst_gui` |
-| Deletion warning, cancellable | `tst_deletions`, `tst_gui`, `tst_planner` |
-| Progress bar and synced/remaining bytes | `tst_progress`, `tst_gui` |
-| Folder appears in Places | `tst_places` |
-| Window always responsive | `tst_responsiveness` |
-| Log file with severities, configurable location | `tst_logging`, `tst_gui` |
-| Drive REST client (paging, retries, resumable upload) | `tst_driveclient` |
-
-### Live tests against Google Drive
-
-Google offers no sandbox or test account for the Drive API. `tst_live_drive` therefore only runs when you
-provide credentials of a Google account dedicated to testing; it is skipped otherwise (always in CI):
-
-```bash
-GDRIVESYNC_LIVE_CLIENT_ID=... GDRIVESYNC_LIVE_CLIENT_SECRET=... GDRIVESYNC_LIVE_REFRESH_TOKEN=... build/bin/tst_live_drive
-```
